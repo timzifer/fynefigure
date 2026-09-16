@@ -11,7 +11,6 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
-	"github.com/timzifer/fynefigure/gpu"
 )
 
 // benchFrames is how many frames a benchmark draws: enough for a p95 to mean
@@ -84,8 +83,8 @@ func newPanel(k *kitchen) *panel {
 		}
 		p.refresh()
 	})
-	p.set(p.gpuCheck, gpu.Enabled())
-	if !gpu.Available() {
+	p.set(p.gpuCheck, tierEnabled())
+	if !tierAvailable() {
 		p.gpuCheck.Disable()
 	}
 	p.pointer = widget.NewCheck("Interactive", func(on bool) {
@@ -199,10 +198,12 @@ func (p *panel) refresh() {
 
 	var tier string
 	switch {
-	case gpu.Enabled():
+	case tierEnabled():
 		tier = "Drawing on the GPU tier."
-	case gpu.Available():
+	case tierAvailable():
 		tier = "Drawing on the CPU rasterizer; the GPU tier is off."
+	case !tierLinked():
+		tier = "Drawing on the CPU rasterizer: this build carries no GPU tier."
 	default:
 		tier = "Drawing on the CPU rasterizer: no GPU device answered."
 	}

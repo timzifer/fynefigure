@@ -36,7 +36,7 @@
 //
 // Above the numbers are the switches. GPU puts the rasterizer on figure's GPU
 // tier or takes it off, at run time: the chart on stage is closed, the tier is
-// switched with gpu.Disable or gpu.Enable, and the chart is built again,
+// switched off and on, and the chart is built again,
 // because a rasterizer keeps GPU state from its first frame and cannot be
 // switched under a live one. Interactive turns the pointer off and on without
 // a rebuild. Half resolution draws a flat chart coarse while it is dragged and
@@ -53,7 +53,6 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
-	"github.com/timzifer/fynefigure/gpu"
 )
 
 func main() {
@@ -73,9 +72,9 @@ func main() {
 	// The tier is given back on the way out, which is gg's advice for the
 	// device it holds. The panel's switch uses Disable and Enable instead,
 	// which keep it.
-	defer gpu.Close()
+	defer tierClose()
 	if *cpu {
-		gpu.Disable()
+		tierDisable()
 	}
 
 	a := app.New()

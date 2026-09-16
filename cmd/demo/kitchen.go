@@ -7,7 +7,6 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
-	"github.com/timzifer/fynefigure/gpu"
 )
 
 const hint = "Hover the chart to read it. Drag to pan, turn the wheel to zoom, double click to go back."
@@ -180,14 +179,14 @@ func (k *kitchen) rebuild() {
 // setGPU switches the tier and reports whether it ended up where it was
 // asked to. A rasterizer holds GPU state from its first frame, so the chart
 // on stage is closed before the switch and built again after it — see
-// gpu.Disable.
+// gpu.go.
 func (k *kitchen) setGPU(on bool) bool {
 	k.teardown()
 	ok := true
 	if on {
-		ok = gpu.Enable()
+		ok = tierEnable()
 	} else {
-		gpu.Disable()
+		tierDisable()
 	}
 	k.rebuild()
 	return ok

@@ -2,7 +2,7 @@
 
 // The demo draws through the GPU tier where a binary can hold both it and
 // Fyne's desktop driver. On Linux it cannot, which is why this file is not
-// built there.
+// built there and tier_linux.go answers for it instead.
 //
 // The tier reaches dlopen, dlsym and __errno_location through
 // //go:cgo_import_dynamic. Fyne's desktop driver is cgo, and on linux/amd64
@@ -19,11 +19,33 @@
 //
 // A Linux reader gets the CPU rasterizer, which is what they would have got
 // from a machine with no usable device anyway.
+//
+// Keeping that promise means no package of this binary may name the tier on
+// Linux — not even to ask whether it is available. So every call goes through
+// the six functions below, and the whole import lives in this one file.
 
 package main
 
 import (
-	// The blank import is the whole opt-in: the tier registers gg's
-	// accelerator from its init, and every rasterizer made afterwards uses it.
-	_ "github.com/timzifer/fynefigure/gpu"
+	// Importing the tier is the whole opt-in: it registers gg's accelerator
+	// from its init, and every rasterizer made afterwards uses it.
+	"github.com/timzifer/fynefigure/gpu"
 )
+
+// tierLinked reports whether this binary carries the GPU tier at all.
+func tierLinked() bool { return true }
+
+// tierEnabled reports whether charts are being drawn on the tier.
+func tierEnabled() bool { return gpu.Enabled() }
+
+// tierAvailable reports whether a device answered.
+func tierAvailable() bool { return gpu.Available() }
+
+// tierEnable puts the rasterizer back on the tier, and reports whether it went.
+func tierEnable() bool { return gpu.Enable() }
+
+// tierDisable takes the rasterizer off the tier, keeping the device.
+func tierDisable() { gpu.Disable() }
+
+// tierClose gives the device back, which is gg's advice on the way out.
+func tierClose() { gpu.Close() }

@@ -5,6 +5,10 @@ go 1.25.0
 // figure's raster backend is pinned the way every figure module pins what it
 // adapts: this bridge is validated against exactly one release of the core and
 // one of the rasterizer, and says which.
+//
+// gg.WithFallbackFont — what puts figure's own fonts behind the application's
+// typeface — is not in a release of the rasterizer yet, so the module builds
+// through go.work until there is one. See internal/look.Fallback.
 require (
 	fyne.io/fyne/v2 v2.7.3
 	github.com/timzifer/figure v0.11.0

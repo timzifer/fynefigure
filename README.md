@@ -442,6 +442,10 @@ passes figure's own fonts to it; a rune no face can draw is written as `?`
 rather than dropped. Supply a font there for a chart whose labels need one
 neither covers — `⟨` and `⟩`, or any CJK script.
 
+The fallback list needs `gg.WithFallbackFont`, which is on figure's main branch
+and not in a release of the rasterizer yet, so the module builds through
+`go.work` until there is one.
+
 ## Building
 
 ```sh

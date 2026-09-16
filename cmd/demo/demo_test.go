@@ -13,7 +13,10 @@ func open(t *testing.T) *kitchen {
 	t.Helper()
 	test.NewTempApp(t)
 	w := test.NewTempWindow(t, nil)
-	k := newKitchen(w, catalog())
+	// No ticker: under the test driver fyne.Do runs on the caller's goroutine,
+	// so a panel refreshing on its own would touch the widgets this test is
+	// driving. The test refreshes what it needs to read.
+	k := newKitchen(w, catalog(), 0)
 	w.SetContent(k.content())
 	w.Resize(fyne.NewSize(1400, 820))
 	t.Cleanup(k.close)

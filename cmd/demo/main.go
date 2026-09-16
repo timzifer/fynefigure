@@ -80,7 +80,7 @@ func main() {
 	a := app.New()
 	w := a.NewWindow("figure — kitchensink")
 	w.Resize(fyne.NewSize(1400, 820))
-	k := newKitchen(w, cat)
+	k := newKitchen(w, cat, panelRefresh)
 	w.SetContent(k.content())
 	w.SetOnClosed(k.close)
 	k.open(*first)

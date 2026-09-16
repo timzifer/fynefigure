@@ -37,7 +37,14 @@ type kitchen struct {
 	done                chan struct{}
 }
 
-func newKitchen(w fyne.Window, cat *catalogue) *kitchen {
+// panelRefresh is how often the panel's numbers are refreshed in the app.
+const panelRefresh = 250 * time.Millisecond
+
+// newKitchen builds the window's contents. every is how often the panel's
+// numbers are refreshed on a goroutine of their own; zero leaves that
+// goroutine unstarted, which is what a test that drives the kitchen itself
+// asks for — see tick.
+func newKitchen(w fyne.Window, cat *catalogue, every time.Duration) *kitchen {
 	k := &kitchen{w: w, cat: cat, rec: newRecorder(), interactive: true, tooltip: true, done: make(chan struct{})}
 	k.title = widget.NewLabelWithStyle("", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	k.note = widget.NewLabel("")
@@ -47,7 +54,9 @@ func newKitchen(w fyne.Window, cat *catalogue) *kitchen {
 	k.stage = container.NewStack()
 	k.tree = k.newTree()
 	k.panel = newPanel(k)
-	go k.tick()
+	if every > 0 {
+		go k.tick(every)
+	}
 	return k
 }
 
@@ -224,10 +233,15 @@ func (k *kitchen) err() error {
 	return nil
 }
 
-// tick refreshes the panel four times a second, which is often enough to
-// read a number while it changes and rarely enough to cost nothing.
-func (k *kitchen) tick() {
-	t := time.NewTicker(250 * time.Millisecond)
+// tick refreshes the panel every so often — four times a second is often
+// enough to read a number while it changes and rarely enough to cost nothing.
+//
+// fyne.Do puts the refresh on the goroutine the driver draws from, which under
+// the desktop driver is a goroutine of its own and under the test driver is
+// whichever one called it. So a test that ticks is a test with two goroutines
+// in its widgets, and the kitchen is built with no ticker there instead.
+func (k *kitchen) tick(every time.Duration) {
+	t := time.NewTicker(every)
 	defer t.Stop()
 	for {
 		select {

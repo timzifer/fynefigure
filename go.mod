@@ -3,16 +3,18 @@ module github.com/timzifer/fynefigure
 go 1.25.0
 
 // figure's raster backend is pinned the way every figure module pins what it
-// adapts: this bridge is validated against exactly one release of the core and
+// adapts: this bridge is validated against exactly one revision of the core and
 // one of the rasterizer, and says which.
 //
+// Both name a commit of figure's main branch rather than a tag, because
 // gg.WithFallbackFont — what puts figure's own fonts behind the application's
-// typeface — is not in a release of the rasterizer yet, so the module builds
-// through go.work until there is one. See internal/look.Fallback.
+// typeface, see internal/look.Fallback — is in no release yet. A pseudo-version
+// is what keeps this module buildable by anyone who fetches it in the meantime;
+// it goes back to naming tags when figure is released again.
 require (
 	fyne.io/fyne/v2 v2.7.3
-	github.com/timzifer/figure v0.11.0
-	github.com/timzifer/figure/backend/gg v0.9.0
+	github.com/timzifer/figure v0.11.1-0.20260916055931-8b2c05ccdec0
+	github.com/timzifer/figure/backend/gg v0.11.1-0.20260916055931-8b2c05ccdec0
 	// The Go fonts, which stand behind the application's typeface for a glyph
 	// it has not got. See internal/look.Fallback.
 	golang.org/x/image v0.45.0

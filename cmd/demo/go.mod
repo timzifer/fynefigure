@@ -14,10 +14,14 @@ module github.com/timzifer/fynefigure/cmd/demo
 
 go 1.25.0
 
+// figure's core and rasterizer name a commit of main rather than a tag: the
+// chart types this catalogue draws — the ternary coord and its prism, the
+// ribbon, the spherical histogram, the arc between two rows — are after
+// v0.11.0 and in no release yet. See the root module's go.mod.
 require (
 	fyne.io/fyne/v2 v2.7.3
-	github.com/timzifer/figure v0.11.0
-	github.com/timzifer/figure/backend/gg v0.9.0
+	github.com/timzifer/figure v0.11.1-0.20260916055931-8b2c05ccdec0
+	github.com/timzifer/figure/backend/gg v0.11.1-0.20260916055931-8b2c05ccdec0
 	github.com/timzifer/fynefigure v0.0.0
 	github.com/timzifer/fynefigure/gpu v0.0.0
 )
@@ -55,7 +59,7 @@ require (
 	github.com/srwiley/oksvg v0.0.0-20221011165216-be6e8873101c // indirect
 	github.com/srwiley/rasterx v0.0.0-20220730225603-2ab79fcdd4ef // indirect
 	github.com/stretchr/testify v1.11.1 // indirect
-	github.com/timzifer/figure/backend/gg/gpu v0.3.0 // indirect
+	github.com/timzifer/figure/backend/gg/gpu v0.3.1-0.20260916055931-8b2c05ccdec0 // indirect
 	github.com/yuin/goldmark v1.7.8 // indirect
 	golang.org/x/image v0.45.0 // indirect
 	golang.org/x/net v0.35.0 // indirect

@@ -443,8 +443,8 @@ rather than dropped. Supply a font there for a chart whose labels need one
 neither covers — `⟨` and `⟩`, or any CJK script.
 
 The fallback list needs `gg.WithFallbackFont`, which is on figure's main branch
-and not in a release of the rasterizer yet, so the module builds through
-`go.work` until there is one.
+and in no release yet, so `go.mod` names a commit of that branch rather than a
+tag until figure is released again.
 
 ## Building
 

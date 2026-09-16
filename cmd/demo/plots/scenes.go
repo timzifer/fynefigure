@@ -36,8 +36,14 @@ func scenes() []Entry {
 		{ID: "antenna-pattern", Group: g, Title: "Radiation pattern (spherical)",
 			Note:  "A four-element broadside array's power pattern as a surface on a spherical scene: the radius in every direction is the power sent that way.",
 			Scene: antennaScene},
+		{ID: "ribbon", Group: g, Title: "Ribbon (a line with width)",
+			Note:  "A descending approach drawn as a band rather than a stroke. The band is a surface, so it is shaded and it occludes: where the path crosses itself, the ribbon says which pass is in front and a line of constant width says nothing.",
+			Scene: ribbonScene},
+		{ID: "joint-orientations", Group: g, Title: "Spherical histogram",
+			Note:  "Which way a set of fractures point, binned into cells of equal area on the sphere and stood up at their count. A latitude–longitude grid would pile a false ring round the equator; bands of equal cos θ do not.",
+			Scene: jointScene},
 		{ID: "bloch", Group: g, Title: "Bloch sphere",
-			Note:  "A detuned Rabi oscillation as one closed curve on the Bloch sphere, starting at |0⟩, which as three expectation values against time would be three sinusoids.",
+			Note:  "A detuned Rabi oscillation as two dozen states on the Bloch sphere, starting at |0⟩. Consecutive states are joined along the arc between them, so the coarse sweep still runs over the surface rather than cutting through the ball.",
 			Scene: blochScene},
 	}
 }
@@ -160,7 +166,10 @@ func antennaScene() *three.Plot {
 func blochScene() *three.Plot {
 	const (
 		detuning = 0.6 // of the Rabi frequency
-		steps    = 240
+		// Two dozen states is a coarse sweep, and it stays on the ball: two
+		// rows a step apart are joined along the great circle between them
+		// rather than by a chord through the inside of the sphere.
+		steps = 24
 	)
 	omega := math.Hypot(1, detuning)
 	ax, az := 1/omega, detuning/omega
@@ -183,8 +192,10 @@ func blochScene() *three.Plot {
 		Float64("theta", []float64{theta[0], theta[steps/2]}).
 		Float64("r", []float64{1, 1})
 
-	// ASCII brackets: the chart's typeface has no ⟩, and a label that loses its
-	// last glyph reads as |0 rather than as a ket.
+	// ASCII brackets: the rasterizer's embedded fonts have no ⟨ or ⟩, and a
+	// rune no face can draw is written as a question mark, so the ket would
+	// read |0? here. A chart that wants the printed spelling supplies a font
+	// that has them through fynefigure.FallbackFont.
 	sc := three.NewScene(three.Spherical(three.AxisEnds("|+>", "|->", "|+i>", "|-i>", "|0>", "|1>"))).
 		Z(scale.Linear(scale.Domain(0, 1))).
 		Add(
@@ -196,6 +207,89 @@ func blochScene() *three.Plot {
 	return three.New(
 		three.Size(560, 560),
 		three.Title("A detuned Rabi oscillation"),
+		three.Theme(theme.Light),
+	).Scene(sc)
+}
+
+// ribbonScene is an aircraft's approach: a descending spiral that passes over
+// its own track twice, which is what a band can say and a stroke cannot.
+func ribbonScene() *three.Plot {
+	const steps = 420
+	var east, north, alt []float64
+	for k := range steps + 1 {
+		t := float64(k) / steps
+		turns := 2.4 * 2 * math.Pi * t
+		radius := 9 - 5.5*t
+		east = append(east, radius*math.Cos(turns))
+		north = append(north, radius*math.Sin(turns))
+		alt = append(alt, 3200-2900*t)
+	}
+	src := figure.NewTable().Float64("east", east).Float64("north", north).Float64("alt", alt)
+
+	sc := three.NewScene(
+		three.XTitle("east (km)"),
+		three.YTitle("north (km)"),
+		three.ZTitle("altitude (ft)"),
+	).
+		X(scale.Linear(scale.Nice())).
+		Y(scale.Linear(scale.Nice())).
+		Z(scale.Linear(scale.Nice())).
+		// The width is in scene units and carries no reading: a band whose
+		// width meant an interval would be a flat line with a band under it.
+		Add(three.Ribbon(src, geom.X("east"), geom.Y("north"), geom.Z("alt"),
+			geom.Fill(palette.SkyBlue), geom.Thickness(0.045)))
+
+	return three.New(
+		three.Size(680, 560),
+		three.Title("A holding pattern, down to the runway"),
+		three.Theme(theme.Light),
+	).Scene(sc).Add(three.View{Camera: three.LookAt(three.Azimuth(-0.8), three.Elevation(0.35))})
+}
+
+// jointScene is the orientation of two fracture sets in a rock mass: a strike
+// azimuth and a plunge, which together are a direction and nothing else.
+//
+// There is no Z column. The count is the value, and the ball's own ladder is
+// the key — the same shape a radiation pattern is read with.
+func jointScene() *three.Plot {
+	var strike, plunge []float64
+	// A scattered background, sampled so that equal areas of the ball get
+	// equal numbers: the azimuth is uniform and the sine of the latitude is,
+	// which is the same substitution the binning is built on. Drawn against a
+	// lat/long grid it would pile a false ring round the equator.
+	for i := range 2000 {
+		strike = append(strike, 360*frac(9000+i))
+		plunge = append(plunge, math.Asin(2*frac(9700+i)-1)*180/math.Pi)
+	}
+	// Two fracture sets on top of it, each a spread of directions about a mean.
+	sets := []struct{ strike, plunge, spread float64 }{
+		{35, 58, 20},
+		{128, 12, 24},
+	}
+	for s, set := range sets {
+		for i := range 300 {
+			strike = append(strike, math.Mod(set.strike+set.spread*noise(11100+s*900+i)+360, 360))
+			p := set.plunge + 0.7*set.spread*noise(12100+s*900+i)
+			plunge = append(plunge, math.Max(-90, math.Min(90, p)))
+		}
+	}
+	src := figure.NewTable().Float64("strike", strike).Float64("plunge", plunge)
+
+	// Latitude reads the second angle as the angle up from the equator, which
+	// is what a plunge is measured as.
+	sc := three.NewScene(three.Spherical(three.Latitude(),
+		three.AxisEnds("E", "W", "N", "S", "up", "down"))).
+		// Zero keeps the radius proportional to the count, so a cell twice as
+		// full stands twice as far out.
+		Z(scale.Linear(scale.Zero())).
+		// The ramp is painted with the count the layer worked out, so the
+		// column named here is a label rather than a column of the table.
+		Add(three.Histogram3(src, geom.X("strike"), geom.Y("plunge"),
+			geom.Bins(5), geom.ColorBy("count", scale.Sequential(palette.Viridis))))
+
+	return three.New(
+		three.Size(580, 560),
+		three.Title("Two fracture sets, by orientation"),
 		three.Theme(theme.Light),
 	).Scene(sc)
 }

@@ -75,12 +75,15 @@ func basics() []Entry {
 				p.Add(geom.Bar(src, geom.X("ms"), geom.Y("count"), geom.Color(palette.Green)))
 			})},
 		{ID: "bars-extruded", Group: g, Title: "Bars in depth (oblique)",
-			Note: "Bars given a top and a side by an oblique coord. The depth carries no variable, the axes still bound the data, and hovering a top face still finds its bar.",
+			Note: "Bars given a top and a side by an oblique coord, each face outlined. The depth carries no variable, the axes still bound the data, and hovering a top face still finds its bar.",
 			Plot: flat("Revenue by quarter", 700, 420, theme.Light, func(p *figure.Plot) {
 				p.X(scale.Ordinal())
 				p.Y(scale.Linear(scale.Nice(), scale.Zero()))
+				// A fill and a colour together outline the mark, and an
+				// extruded bar keeps that outline on all three of its faces.
 				p.Add(geom.Bar(quarterlyRevenue(), geom.X("quarter"), geom.Y("revenue"),
-					geom.Color(palette.Blue), geom.Extrude(true)))
+					geom.Fill(palette.SkyBlue), geom.Color(palette.Blue),
+					geom.Extrude(true)))
 			}, figure.Coord(coord.Oblique(coord.Depth(0.08))), figure.YTitle("€ million"))},
 		{ID: "area", Group: g, Title: "Area band",
 			Note: "An interval drawn as an area between two columns, with the estimate as a line over it.",
@@ -853,19 +856,29 @@ func relational() []Entry {
 					geom.Baseline(1), geom.Padding(0.01)))
 			}, figure.Coord(coord.Polar()))},
 		{ID: "dendrogram-heatmap", Group: g, Title: "Dendrogram over heatmap",
-			Note: "Samples clustered by their expression, with the tree in a track over the heatmap. Each branch joins at the distance its clusters merged at, and each column stands under its own leaf.",
-			Plot: flat("Expression, clustered by sample", 640, 560, theme.Light, func(p *figure.Plot) {
-				tree, leaves := sampleTree()
-				// The sample axis is pinned to the tree's leaf order. An axis left
+			Note: "Both clusterings of one matrix: the samples across the top and the genes up the left, each cell under the leaf that names it. The left tree is the same mark laid the other way round — its breadth runs up Y and its height out to the side.",
+			Plot: flat("Expression, clustered both ways", 640, 560, theme.Light, func(p *figure.Plot) {
+				samples, sampleLeaves := sampleTree()
+				genes, geneLeaves := geneTree()
+				// Both axes are pinned to their tree's leaf order. An axis left
 				// to discover its categories would learn them from the table.
-				p.X(scale.Ordinal(scale.Categories(leaves...), scale.OrdinalPadding(0)))
-				p.Y(scale.Ordinal(scale.Categories(exprGenes...), scale.OrdinalPadding(0)))
+				p.X(scale.Ordinal(scale.Categories(sampleLeaves...), scale.OrdinalPadding(0)))
+				p.Y(scale.Ordinal(scale.Categories(geneLeaves...), scale.OrdinalPadding(0)))
 				p.Add(geom.Rect(expressionCells(),
 					geom.X("sample"), geom.Y("gene"),
 					geom.ColorBy("expr", scale.Diverging(palette.BlueOrange))))
 				p.Track(figure.Top, figure.TrackSize(110), figure.TrackScale(scale.Linear())).
-					Add(geom.Tree(tree,
+					Add(geom.Tree(samples,
 						geom.ID("node"), geom.Parent("under"), geom.Value("height"),
+						geom.Color(palette.Gray)))
+				// A left track shares the panel's Y, so the breadth has to be on
+				// Y — geom.Horizontal — and geom.Baseline(1) turns the height over
+				// so the leaves meet the cells and the root is at the outside,
+				// which is how a clustered heatmap is printed.
+				p.Track(figure.Left, figure.TrackSize(110), figure.TrackScale(scale.Linear())).
+					Add(geom.Tree(genes,
+						geom.ID("node"), geom.Parent("under"), geom.Value("height"),
+						geom.Orient(geom.Horizontal), geom.Baseline(1),
 						geom.Color(palette.Gray)))
 			})},
 		{ID: "radial-tree", Group: g, Title: "Radial tidy tree",

@@ -53,6 +53,22 @@ func noise(i int) float64 {
 	return sum - 6
 }
 
+// frac is a deterministic pseudo-uniform value in [0, 1), off the linear
+// congruential sequence noise draws from.
+//
+// It takes three rounds and a mix, where one round would do for uniformity,
+// because two of these are read side by side: one round is affine in i, so
+// frac(a+i) and frac(b+i) walk in step and a pair of them would trace a curve
+// rather than fill a square.
+func frac(i int) float64 {
+	v := uint64(i)*2862933555777941757 + 3037000493
+	for range 3 {
+		v = v*6364136223846793005 + 1442695040888963407
+		v ^= v >> 33
+	}
+	return float64(v>>11) / float64(uint64(1)<<53)
+}
+
 func lognormalAt(i int, mu, sigma float64) float64 {
 	return math.Exp(mu + sigma*noise(i))
 }
@@ -892,29 +908,54 @@ func expressionCells() *data.Table {
 	return figure.NewTable().String("sample", sample).String("gene", gene).Float64("expr", value)
 }
 
-// sampleTree is average-linkage agglomerative clustering of the samples by
-// Euclidean distance: the (node, parent, height) table a dendrogram reads, and
-// the leaves in the order the tree lays them out — which the heatmap's sample
-// axis is pinned to, so each column stands under its leaf.
+// sampleTree and geneTree are the two clusterings of the expression matrix:
+// the samples by their genes, and the genes by their samples. They are the
+// same function read the other way round, which is also what the two
+// dendrograms over the heatmap are.
+//
+// Each returns the (node, parent, height) table a dendrogram reads, and the
+// leaves in the order the tree lays them out — which the matching axis is
+// pinned to, so every cell stands under the leaf that names it.
 func sampleTree() (tree *data.Table, leaves []string) {
+	return cluster(exprSamples, func(a, b int) float64 {
+		return exprDistance(len(exprGenes), func(g int) (float64, float64) {
+			return expression(a, g), expression(b, g)
+		})
+	})
+}
+
+func geneTree() (tree *data.Table, leaves []string) {
+	return cluster(exprGenes, func(a, b int) float64 {
+		return exprDistance(len(exprSamples), func(s int) (float64, float64) {
+			return expression(s, a), expression(s, b)
+		})
+	})
+}
+
+// exprDistance is the Euclidean distance between two rows of the matrix, given
+// a function that hands out one pair of readings per column.
+func exprDistance(n int, pair func(i int) (float64, float64)) float64 {
+	d := 0.0
+	for i := range n {
+		a, b := pair(i)
+		d += (a - b) * (a - b)
+	}
+	return math.Sqrt(d)
+}
+
+// cluster is average-linkage agglomerative clustering of a set of items under
+// a distance.
+func cluster(names []string, dist func(a, b int) float64) (tree *data.Table, leaves []string) {
 	type group struct {
 		name    string
 		members []int
-	}
-	dist := func(a, b int) float64 {
-		d := 0.0
-		for g := range exprGenes {
-			e := expression(a, g) - expression(b, g)
-			d += e * e
-		}
-		return math.Sqrt(d)
 	}
 
 	var node []string
 	var height []float64
 	var groups []group
-	for s, name := range exprSamples {
-		groups = append(groups, group{name, []int{s}})
+	for i, name := range names {
+		groups = append(groups, group{name, []int{i}})
 		node, height = append(node, name), append(height, 0)
 	}
 	parentOf := map[string]string{}

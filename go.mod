@@ -9,6 +9,9 @@ require (
 	fyne.io/fyne/v2 v2.7.3
 	github.com/timzifer/figure v0.11.0
 	github.com/timzifer/figure/backend/gg v0.9.0
+	// The Go fonts, which stand behind the application's typeface for a glyph
+	// it has not got. See internal/look.Fallback.
+	golang.org/x/image v0.45.0
 )
 
 require (
@@ -32,7 +35,6 @@ require (
 	github.com/srwiley/rasterx v0.0.0-20220730225603-2ab79fcdd4ef // indirect
 	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/yuin/goldmark v1.7.8 // indirect
-	golang.org/x/image v0.45.0 // indirect
 	golang.org/x/net v0.35.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.41.0 // indirect

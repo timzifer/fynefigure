@@ -356,7 +356,11 @@ func (c *Chart) ensureTarget() {
 	var opts []fynefigure.Option
 	if c.cfg.font {
 		if regular, bold, italic, ok := c.themeFonts(); ok {
-			opts = append(opts, fynefigure.Font(regular, bold, italic))
+			// The rasterizer's own fonts stand behind the theme's, for the
+			// glyphs the theme's typeface has not got — see [look.Fallback].
+			opts = append(opts,
+				fynefigure.Font(regular, bold, italic),
+				fynefigure.FallbackFont(look.Fallback()...))
 		}
 	}
 	c.target = fynefigure.New(opts...)

@@ -61,7 +61,7 @@ var _ ir.Target = (*Target)(nil)
 // until a chart is drawn into it.
 func New(opts ...Option) *Target {
 	c := build(opts)
-	t := &Target{cfg: c, surf: ggbackend.NewSurface(c.gg...)}
+	t := &Target{cfg: c, surf: ggbackend.NewSurface(c.gg()...)}
 	t.raster = canvas.NewRaster(t.generate)
 	t.raster.ScaleMode = c.scale
 	return t
@@ -209,16 +209,23 @@ func (t *Target) OnFrame(fn func(Frame)) {
 // would leave it showing a chart nothing draws into any more.
 //
 // Pass all three as nil to go back to the rasterizer's own fonts.
-func (t *Target) SetFont(regular, bold, italic []byte) error {
+//
+// The fallbacks are the faces consulted for a rune the new typeface has no
+// glyph for — see [FallbackFont] — and they replace whatever was there rather
+// than adding to it: a caller that passes none is asking for none. A widget
+// changing typeface passes the same fallbacks again, which is what keeps a
+// symbol drawn across a change of theme.
+func (t *Target) SetFont(regular, bold, italic []byte, fallback ...[]byte) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	err := t.surf.Close()
 	if len(regular) == 0 {
-		t.cfg.gg = nil
+		t.cfg.font = [3][]byte{}
 	} else {
-		t.cfg.gg = []ggbackend.Option{ggbackend.WithFont(regular, bold, italic)}
+		t.cfg.font = [3][]byte{regular, bold, italic}
 	}
-	t.surf = ggbackend.NewSurface(t.cfg.gg...)
+	t.cfg.fallback = fallback
+	t.surf = ggbackend.NewSurface(t.cfg.gg()...)
 	t.back, t.shown = nil, 0
 	return err
 }

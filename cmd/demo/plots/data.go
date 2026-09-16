@@ -1,14 +1,18 @@
 package plots
 
 import (
+	"cmp"
 	"fmt"
 	"math"
 	"math/cmplx"
+	"slices"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/timzifer/figure"
 	"github.com/timzifer/figure/data"
+	"github.com/timzifer/figure/stat"
 	"github.com/timzifer/figure/theme"
 )
 
@@ -47,6 +51,22 @@ func noise(i int) float64 {
 		sum += float64(v>>11) / float64(uint64(1)<<53)
 	}
 	return sum - 6
+}
+
+// frac is a deterministic pseudo-uniform value in [0, 1), off the linear
+// congruential sequence noise draws from.
+//
+// It takes three rounds and a mix, where one round would do for uniformity,
+// because two of these are read side by side: one round is affine in i, so
+// frac(a+i) and frac(b+i) walk in step and a pair of them would trace a curve
+// rather than fill a square.
+func frac(i int) float64 {
+	v := uint64(i)*2862933555777941757 + 3037000493
+	for range 3 {
+		v = v*6364136223846793005 + 1442695040888963407
+		v ^= v >> 33
+	}
+	return float64(v>>11) / float64(uint64(1)<<53)
 }
 
 func lognormalAt(i int, mu, sigma float64) float64 {
@@ -222,6 +242,41 @@ func speedRanges() *data.Table {
 		Float64("hi", []float64{100, 130}).
 		String("lane", []string{"band", "band"}).
 		String("range", []string{"below target", "at target"})
+}
+
+// meterBase is a feeder's idle draw in kilowatts, which is the origin the
+// horizon chart's fold is measured from, and meterBand is one band of it.
+//
+// The band is pinned rather than cut from the data: 30 kW means 30 kW in this
+// chart and in the next one drawn this way, where a band taken as a share of
+// each day's own maximum would make two days incomparable — which is the one
+// thing the form exists to prevent.
+const (
+	meterBase = 120.0
+	meterBand = 30.0
+)
+
+// meterLoad is six hours of metered load for one feeder, about meterBase.
+//
+// It is the series a horizon chart is for: a slow shift swell, a faster machine
+// cycle on top of it, and one short overload that a trace this height would
+// flatten into the rest of the line.
+func meterLoad() *data.Table {
+	const n = 360
+	start := time.Date(2026, time.September, 14, 6, 0, 0, 0, time.UTC)
+	times := make([]time.Time, n)
+	kw := make([]float64, n)
+	for i := range n {
+		x := float64(i) / float64(n-1)
+		v := meterBase + 52*math.Sin(2*math.Pi*x) + 16*math.Sin(23*math.Pi*x)
+		// The overload: a couple of bands deep and a few minutes wide.
+		if d := float64(i) - 0.62*n; math.Abs(d) < 9 {
+			v += 95 * (1 - math.Abs(d)/9)
+		}
+		times[i] = start.Add(time.Duration(i) * time.Minute)
+		kw[i] = v
+	}
+	return figure.NewTable().Time("t", times).Float64("kw", kw)
 }
 
 // --- distributions ------------------------------------------------------------
@@ -600,6 +655,382 @@ func fleet() (regions []string, hours, rps []float64) {
 		}
 	}
 	return regions, hours, rps
+}
+
+// --- bars in depth ------------------------------------------------------------
+
+func quarterlyRevenue() *data.Table {
+	return figure.NewTable().
+		String("quarter", []string{"Q1 25", "Q2 25", "Q3 25", "Q4 25", "Q1 26", "Q2 26"}).
+		Float64("revenue", []float64{4.2, 4.8, 4.5, 6.1, 5.3, 5.9})
+}
+
+// --- Weibull paper ------------------------------------------------------------
+
+// The population the bearings were drawn from: wear-out, since β > 1, with
+// 63.2 % of units failed by η hours.
+const (
+	bearingBeta  = 2.2
+	bearingEta   = 1000.0
+	bearingUnits = 20
+)
+
+// bearingCDF is the population's distribution function.
+func bearingCDF(t float64) float64 { return -math.Expm1(-math.Pow(t/bearingEta, bearingBeta)) }
+
+// bearingFailures is a sample of the population, ascending. It is drawn at
+// evenly spaced probabilities and nudged by a fixed pattern, so it looks like a
+// test rather than like a formula and is the same on every rebuild.
+func bearingFailures() []float64 {
+	out := make([]float64, bearingUnits)
+	for i := range out {
+		p := (float64(i) + 0.5) / bearingUnits
+		p = math.Min(math.Max(p+0.02*math.Sin(float64(i)*2.4), 0.005), 0.995)
+		out[i] = bearingEta * math.Pow(-math.Log1p(-p), 1/bearingBeta)
+	}
+	// The nudge can swap neighbours; median ranks need the column ascending.
+	slices.Sort(out)
+	return out
+}
+
+// --- survival -----------------------------------------------------------------
+
+// remissionArms is the 6-MP trial every survival text opens on: weeks in
+// remission per patient, and whether it ended in a relapse (1) or the patient
+// was last seen still in remission (0). Each arm is in ascending order, which
+// is what stat.KaplanMeier reads.
+var remissionArms = []struct {
+	name            string
+	weeks, relapsed []float64
+}{
+	{"6-MP",
+		[]float64{6, 6, 6, 6, 7, 9, 10, 10, 11, 13, 16, 17, 19, 20, 22, 23, 25, 32, 32, 34, 35},
+		[]float64{1, 1, 1, 0, 1, 0, 1, 0, 0, 1, 1, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0}},
+	{"placebo",
+		[]float64{1, 1, 2, 2, 3, 4, 4, 5, 5, 8, 8, 8, 8, 11, 11, 12, 12, 15, 17, 22, 23},
+		[]float64{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1}},
+}
+
+func remission() *data.Table {
+	var weeks, relapsed []float64
+	var arm []string
+	for _, a := range remissionArms {
+		weeks = append(weeks, a.weeks...)
+		relapsed = append(relapsed, a.relapsed...)
+		for range a.weeks {
+			arm = append(arm, a.name)
+		}
+	}
+	return figure.NewTable().Float64("weeks", weeks).Float64("relapsed", relapsed).String("arm", arm)
+}
+
+// remissionAtRisk is the numbers-at-risk table under the curves: for each arm
+// and each time, how many patients were still under observation — the risk set
+// of the first step at or after it, or nobody once the arm has run out.
+func remissionAtRisk(at ...float64) *data.Table {
+	var ts []float64
+	var lane, count []string
+	for _, a := range remissionArms {
+		events := make([]bool, len(a.relapsed))
+		for i, r := range a.relapsed {
+			events[i] = r != 0
+		}
+		steps := stat.KaplanMeier(a.weeks, events)
+		for _, t := range at {
+			n := 0
+			for _, s := range steps {
+				if s.T >= t {
+					n = s.AtRisk
+					break
+				}
+			}
+			ts, lane = append(ts, t), append(lane, a.name)
+			count = append(count, strconv.Itoa(n))
+		}
+	}
+	return figure.NewTable().Float64("weeks", ts).String("arm", lane).String("n", count)
+}
+
+// --- classifier curves --------------------------------------------------------
+
+// classifierROC scores 300 cases, one in three of them positive, with a
+// classifier whose positives sit sep standard deviations above its negatives,
+// and returns its ROC curve and the area under it. seed keeps two classifiers
+// from drawing the same noise.
+func classifierROC(sep float64, seed int) (fpr, tpr []float64, auc float64) {
+	const n = 300
+	type scored struct {
+		score    float64
+		positive bool
+	}
+	rows := make([]scored, n)
+	for i := range rows {
+		pos := i%3 == 0
+		s := noise(seed*n + i)
+		if pos {
+			s += sep
+		}
+		rows[i] = scored{s, pos}
+	}
+	slices.SortFunc(rows, func(a, b scored) int { return cmp.Compare(a.score, b.score) })
+	scores, positive := make([]float64, n), make([]bool, n)
+	for i, r := range rows {
+		scores[i], positive[i] = r.score, r.positive
+	}
+	curve, auc := stat.ROC(scores, positive)
+	for _, pt := range curve {
+		fpr, tpr = append(fpr, pt.X), append(tpr, pt.Y)
+	}
+	return fpr, tpr, auc
+}
+
+// --- correlogram --------------------------------------------------------------
+
+// vibration is 240 readings of a first-order autoregressive process with a
+// slow resonance on top: its correlation decays over a handful of lags and
+// comes back at the resonance's period.
+func vibration() []float64 {
+	const n = 240
+	out := make([]float64, n)
+	prev := 0.0
+	for i := range out {
+		prev = 0.6*prev + noise(7000+i)
+		out[i] = prev + 1.6*math.Sin(2*math.Pi*float64(i)/12)
+	}
+	return out
+}
+
+// --- spectrogram --------------------------------------------------------------
+
+// The recording and the transform over it. The hop is well under a quarter of
+// the window, which is the overlap that makes a chirp a line rather than a
+// staircase.
+const (
+	audioRate    = 8000
+	audioSeconds = 4
+	audioWindow  = 256
+	audioHop     = 24
+	audioBins    = audioWindow / 2 // up to the Nyquist frequency
+	audioFloorDB = -70             // silence is the bottom of the ramp, not −∞
+)
+
+// spectrum is the short-time Fourier transform of audio, as the long (t, hz,
+// db) table a raster reads: one row per frame per bin, every cell present
+// once. It is a plain transform rather than a fast one — a fraction of a
+// second of arithmetic, and nothing to explain.
+func spectrum() *data.Table {
+	pcm := audio()
+	frames := (len(pcm) - audioWindow) / audioHop
+
+	taper := make([]float64, audioWindow)
+	for i := range taper {
+		taper[i] = 0.5 - 0.5*math.Cos(2*math.Pi*float64(i)/float64(audioWindow-1))
+	}
+	ts := make([]float64, 0, frames*audioBins)
+	hz := make([]float64, 0, frames*audioBins)
+	db := make([]float64, 0, frames*audioBins)
+	frame := make([]float64, audioWindow)
+	for f := range frames {
+		at := f * audioHop
+		for i := range frame {
+			frame[i] = pcm[at+i] * taper[i]
+		}
+		t := float64(at+audioWindow/2) / audioRate
+		for k := range audioBins {
+			w := 2 * math.Pi * float64(k) / audioWindow
+			re, im := 0.0, 0.0
+			for i, v := range frame {
+				s, c := math.Sincos(w * float64(i))
+				re, im = re+v*c, im-v*s
+			}
+			level := float64(audioFloorDB)
+			if mag := 2 * math.Hypot(re, im) / audioWindow; mag > 0 {
+				level = math.Max(20*math.Log10(mag), audioFloorDB)
+			}
+			ts = append(ts, t)
+			hz = append(hz, float64(k)*audioRate/audioWindow)
+			db = append(db, level)
+		}
+	}
+	return figure.NewTable().Float64("t", ts).Float64("hz", hz).Float64("db", db)
+}
+
+// audio is the recording: a chirp from 200 Hz to 3 kHz, a steady 1.2 kHz tone
+// to check the frequency axis against, one broadband click a millisecond wide,
+// and a little hiss so the quiet parts are a floor.
+func audio() []float64 {
+	n := audioRate * audioSeconds
+	out := make([]float64, n)
+	for i := range out {
+		t := float64(i) / audioRate
+		// The phase is the integral of the frequency, not frequency times time.
+		f0, f1 := 200.0, 3000.0
+		rate := (f1 - f0) / audioSeconds
+		out[i] += 0.8 * math.Sin(2*math.Pi*(f0*t+rate*t*t/2))
+		out[i] += 0.35 * math.Sin(2*math.Pi*1200*t)
+		if d := t - float64(audioSeconds)/3; d >= 0 && d < 0.001 {
+			out[i] += 3 * (1 - d/0.001)
+		}
+		out[i] += 0.002 * noise(i)
+	}
+	return out
+}
+
+// --- dendrograms --------------------------------------------------------------
+
+// The expression matrix: each sample is one of three conditions plus a little
+// noise, so the clustering has a structure to find, and the samples are
+// deliberately not listed in that structure's order.
+var (
+	exprGenes     = []string{"ACT1", "GAL4", "HSP70", "CDC28", "RPL3", "PHO5", "SUC2", "ADH1"}
+	exprSamples   = []string{"s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9"}
+	exprCondition = []int{0, 2, 1, 0, 2, 1, 0, 1, 2}
+	exprProfiles  = [3][]float64{
+		{2.1, -1.0, 0.3, 1.5, 0.2, -0.8, -1.2, 1.9},
+		{-0.4, 1.8, 2.2, -0.9, 0.1, 1.1, 0.6, -1.5},
+		{0.2, 0.4, -1.6, 0.3, 2.0, -0.2, 1.7, 0.1},
+	}
+)
+
+func expression(s, g int) float64 {
+	return exprProfiles[exprCondition[s]][g] + 0.35*math.Sin(float64(7*s+3*g))
+}
+
+func expressionCells() *data.Table {
+	var sample, gene []string
+	var value []float64
+	for s := range exprSamples {
+		for g := range exprGenes {
+			sample, gene = append(sample, exprSamples[s]), append(gene, exprGenes[g])
+			value = append(value, expression(s, g))
+		}
+	}
+	return figure.NewTable().String("sample", sample).String("gene", gene).Float64("expr", value)
+}
+
+// sampleTree and geneTree are the two clusterings of the expression matrix:
+// the samples by their genes, and the genes by their samples. They are the
+// same function read the other way round, which is also what the two
+// dendrograms over the heatmap are.
+//
+// Each returns the (node, parent, height) table a dendrogram reads, and the
+// leaves in the order the tree lays them out — which the matching axis is
+// pinned to, so every cell stands under the leaf that names it.
+func sampleTree() (tree *data.Table, leaves []string) {
+	return cluster(exprSamples, func(a, b int) float64 {
+		return exprDistance(len(exprGenes), func(g int) (float64, float64) {
+			return expression(a, g), expression(b, g)
+		})
+	})
+}
+
+func geneTree() (tree *data.Table, leaves []string) {
+	return cluster(exprGenes, func(a, b int) float64 {
+		return exprDistance(len(exprSamples), func(s int) (float64, float64) {
+			return expression(s, a), expression(s, b)
+		})
+	})
+}
+
+// exprDistance is the Euclidean distance between two rows of the matrix, given
+// a function that hands out one pair of readings per column.
+func exprDistance(n int, pair func(i int) (float64, float64)) float64 {
+	d := 0.0
+	for i := range n {
+		a, b := pair(i)
+		d += (a - b) * (a - b)
+	}
+	return math.Sqrt(d)
+}
+
+// cluster is average-linkage agglomerative clustering of a set of items under
+// a distance.
+func cluster(names []string, dist func(a, b int) float64) (tree *data.Table, leaves []string) {
+	type group struct {
+		name    string
+		members []int
+	}
+
+	var node []string
+	var height []float64
+	var groups []group
+	for i, name := range names {
+		groups = append(groups, group{name, []int{i}})
+		node, height = append(node, name), append(height, 0)
+	}
+	parentOf := map[string]string{}
+	for k := 1; len(groups) > 1; k++ {
+		bi, bj, best := 0, 1, math.Inf(1)
+		for i := range groups {
+			for j := i + 1; j < len(groups); j++ {
+				sum := 0.0
+				for _, a := range groups[i].members {
+					for _, b := range groups[j].members {
+						sum += dist(a, b)
+					}
+				}
+				if d := sum / float64(len(groups[i].members)*len(groups[j].members)); d < best {
+					bi, bj, best = i, j, d
+				}
+			}
+		}
+		merged := group{fmt.Sprintf("m%d", k), slices.Concat(groups[bi].members, groups[bj].members)}
+		parentOf[groups[bi].name], parentOf[groups[bj].name] = merged.name, merged.name
+		node, height = append(node, merged.name), append(height, best)
+		// bj > bi, so removing bj first leaves bi where it was.
+		groups = slices.Delete(groups, bj, bj+1)
+		groups = slices.Delete(groups, bi, bi+1)
+		groups = append(groups, merged)
+	}
+
+	index := map[string]int{}
+	for i, name := range node {
+		index[name] = i
+	}
+	under := make([]string, len(node))
+	parent := make([]int, len(node))
+	for i, name := range node {
+		under[i] = parentOf[name]
+		parent[i] = stat.NoParent
+		if p, ok := parentOf[name]; ok {
+			parent[i] = index[p]
+		}
+	}
+	var lay stat.Tidy
+	lay.ResetLeaves(parent, stat.Depth(parent))
+	for _, leaf := range lay.Leaves {
+		leaves = append(leaves, node[leaf])
+	}
+	return figure.NewTable().String("node", node).String("under", under).Float64("height", height), leaves
+}
+
+// moduleTree is a Go module's package tree, root first.
+func moduleTree() *data.Table {
+	node := []string{"figure", "geom", "scale", "stat", "render", "backend",
+		"line", "bar", "tree", "linear", "log", "probability",
+		"tidy", "kde", "bin", "svg", "pdf", "gg", "layout", "coord"}
+	under := []string{"", "figure", "figure", "figure", "figure", "figure",
+		"geom", "geom", "geom", "scale", "scale", "scale",
+		"stat", "stat", "stat", "backend", "backend", "backend", "render", "render"}
+	return figure.NewTable().String("node", node).String("under", under)
+}
+
+// --- control chart ------------------------------------------------------------
+
+// fillBaseline is how many readings the control limits are computed from.
+// After them the limits are frozen and the filler drifts upward.
+const fillBaseline = 30
+
+// fillWeights is sixty fill weights in grams.
+func fillWeights() []float64 {
+	w := make([]float64, 60)
+	for i := range w {
+		w[i] = 500 + 0.9*math.Sin(float64(i)*2.1) + 0.6*math.Cos(float64(i)*5.3)
+		if i >= 42 {
+			w[i] += 0.12 * float64(i-41)
+		}
+	}
+	return w
 }
 
 // --- 3D -----------------------------------------------------------------------

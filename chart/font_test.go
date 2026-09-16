@@ -17,8 +17,10 @@ import (
 // silently, leaving a gap where the reader expected a symbol.
 //
 // Fyne's own theme font is NotoSans-Regular, which has no glyph for U+2264.
-// So a chart drawn in it loses the ≤ from its title, which is why the labels
-// are drawn in the rasterizer's own fonts unless asked otherwise.
+// So a chart drawn in it alone would lose the ≤ from its title — which is why
+// the labels are drawn in the rasterizer's own fonts unless asked otherwise,
+// and why a chart that does follow the theme's typeface keeps those fonts
+// behind it as a fallback.
 
 func TestTheDefaultFontsDrawTheSymbolsAChartUses(t *testing.T) {
 	for _, symbols := range []string{"≤≤≤≤", "≥≥≥≥", "∞∞∞∞"} {
@@ -38,15 +40,52 @@ func TestTheDefaultFontsDrawTheSymbolsAChartUses(t *testing.T) {
 	}
 }
 
+// The theme's typeface is followed for the letters it has and fallen back on
+// for the symbols it has not, so turning ThemeFont on no longer costs a chart
+// the characters its labels reach for.
+//
+// A rune no face can draw is written as a question mark, which is ink too — so
+// counting ink no longer tells a drawn symbol from a lost one. What does is
+// drawing the question marks: a chart whose ≤ fell back looks different from
+// one titled "????", and a chart that lost it looks exactly the same.
+func TestTheThemeFontFallsBackForTheSymbolsItHasNot(t *testing.T) {
+	for _, symbols := range []string{"≤≤≤≤", "≥≥≥≥", "∞∞∞∞"} {
+		t.Run(symbols, func(t *testing.T) {
+			lost := titled(t, "????", chart.ThemeFont(true))
+			drawn := titled(t, symbols, chart.ThemeFont(true))
+			if same(lost, drawn) {
+				t.Errorf("a title of %q is drawn exactly as %q is, so the glyph was lost",
+					symbols, "????")
+			}
+		})
+	}
+}
+
+// same reports whether two renderings of the same chart are pixel for pixel
+// identical.
+func same(a, b image.Image) bool {
+	if a.Bounds() != b.Bounds() {
+		return false
+	}
+	for y := a.Bounds().Min.Y; y < a.Bounds().Max.Y; y++ {
+		for x := a.Bounds().Min.X; x < a.Bounds().Max.X; x++ {
+			if a.At(x, y) != b.At(x, y) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 // titled renders a chart with the given title, at the package defaults.
-func titled(t *testing.T, title string) image.Image {
+func titled(t *testing.T, title string, opts ...chart.Option) image.Image {
 	t.Helper()
 	test.NewTempApp(t)
 
 	p := figure.New(figure.Size(400, 250), figure.Title(title))
 	p.Add(geom.Line(source(), geom.X("t"), geom.Y("y")))
 
-	c := chart.New(p, chart.Interactive(true))
+	c := chart.New(p, append([]chart.Option{chart.Interactive(true)}, opts...)...)
 	win := test.NewTempWindow(t, c)
 	win.Resize(fyne.NewSize(500, 300))
 	c.Resize(fyne.NewSize(500, 300))

@@ -90,6 +90,26 @@ func (c *Chart) Interactive() bool {
 	return c.cfg.interactive
 }
 
+// SetTooltip turns the hover tooltip on or off. It is [Tooltip] for a chart
+// already on screen, and like it shows nothing until the chart is also
+// [Interactive]. Turning it off hides a tooltip that is showing.
+func (c *Chart) SetTooltip(on bool) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	c.cfg.tooltip = on
+	if !on {
+		c.tip.hide()
+	}
+}
+
+// Tooltip reports whether the chart shows a tooltip on hover once it is
+// interactive. See [Tooltip].
+func (c *Chart) Tooltip() bool {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	return c.cfg.tooltip
+}
+
 // MouseIn is called by Fyne. It is not part of the API.
 func (p *pointer) MouseIn(ev *desktop.MouseEvent) {
 	c := p.c

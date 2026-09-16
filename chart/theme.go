@@ -51,15 +51,18 @@ func (c *Chart) refont() {
 	}
 
 	regular, bold, italic, ok := c.themeFonts()
+	var fallback [][]byte
 	if !ok {
 		regular, bold, italic = nil, nil, nil
+	} else {
+		fallback = look.Fallback()
 	}
-	if err := c.target.SetFont(regular, bold, italic); err != nil {
+	if err := c.target.SetFont(regular, bold, italic, fallback...); err != nil {
 		c.renderr = err
 	}
 	// The tooltip is drawn by a rasterizer of its own, in the same typeface:
 	// a box in a different face from the axis beside it would read as a bug.
-	c.tip.setFont(regular, bold, italic)
+	c.tip.setFont(regular, bold, italic, fallback...)
 	c.w, c.h, c.dpr = 0, 0, 0
 	c.resize(size)
 }

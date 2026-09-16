@@ -87,7 +87,8 @@ c := chart.New(p,
     chart.Brush(&figure.Brush{}),         // what that rectangle looks like
     chart.LegendToggle(true),              // click a legend row to hide a series
     chart.Overlay(&figure.Crosshair{}),   // paint over the finished chart
-    chart.TooltipFormat(myFormat),         // or chart.Tooltip(false)
+    chart.Tooltip(true),                   // a second opt-in; shows only when interactive
+    chart.TooltipFormat(myFormat),         // what it says
     chart.TooltipLook(myTooltipStyle),     // colours, padding, type
     chart.ThemeFont(true),                 // the app's typeface; see below
     chart.WheelScale(4),                   // zoom per notch
@@ -426,16 +427,24 @@ The chart reads the application's background colour and picks figure's light
 or dark theme to match, in the page colour and the text size the Fyne theme
 asks for. `chart.FollowTheme(false)` turns that off.
 
-The labels are drawn in figure's own fonts rather than the application's, and
-that is deliberate. Fyne renders text through a shaper that falls back: a
+The labels are drawn in figure's own fonts rather than the application's, which
+keeps the widget comparable pixel for pixel with an exported PNG.
+`chart.ThemeFont(true)` matches the application's typeface instead.
+
+A themed chart keeps figure's fonts behind the theme's, for the glyphs the
+theme's has not got. Fyne renders text through a shaper that falls back: a
 character its theme font has no glyph for is drawn from another font, so the
-label appears. The rasterizer that draws a chart is handed one font and has no
-fallback, so the same character is drawn as nothing at all — silently, leaving a
-gap. Fyne's theme font is NotoSans-Regular, which has no glyph for `≤`, `≥` or
-`∞`, so a chart titled `30° ≤ x` would keep the degree sign and lose the rest.
-`chart.ThemeFont(true)` matches the application's typeface for a chart whose
-labels are plain enough to carry it; the default also keeps the widget
-comparable pixel for pixel with an exported PNG.
+label appears. A rasterizer is handed one font and has to be told what stands
+behind it — Fyne's theme font is NotoSans-Regular, which has no `≤`, `≥` or
+`∞`, so a chart titled `30° ≤ x` in that font alone would keep the degree sign
+and lose the rest. `fynefigure.FallbackFont` is that list, and the chart widget
+passes figure's own fonts to it; a rune no face can draw is written as `?`
+rather than dropped. Supply a font there for a chart whose labels need one
+neither covers — `⟨` and `⟩`, or any CJK script.
+
+The fallback list needs `gg.WithFallbackFont`, which is on figure's main branch
+and in no release yet, so `go.mod` names a commit of that branch rather than a
+tag until figure is released again.
 
 ## Building
 

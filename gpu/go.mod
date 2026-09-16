@@ -13,10 +13,14 @@ go 1.25.0
 // and a nested module requiring its own parent would need the parent tagged
 // before the child could build.
 
+// figure's core, rasterizer and GPU tier name a commit of main rather than a
+// tag: the tier's Available, Disable and Enable are in no release of
+// backend/gg/gpu, which is held out of releases while the replace below is
+// needed. See the parent module's go.mod.
 require (
-	github.com/timzifer/figure v0.10.0
-	github.com/timzifer/figure/backend/gg v0.9.0
-	github.com/timzifer/figure/backend/gg/gpu v0.3.0
+	github.com/timzifer/figure v0.11.1-0.20260916055931-8b2c05ccdec0
+	github.com/timzifer/figure/backend/gg v0.11.1-0.20260916055931-8b2c05ccdec0
+	github.com/timzifer/figure/backend/gg/gpu v0.3.1-0.20260916055931-8b2c05ccdec0
 )
 
 require (

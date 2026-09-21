@@ -271,7 +271,7 @@ func (t *tooltip) show(ev figure.Event) {
 	if !t.img.Visible() {
 		t.img.Show()
 	}
-	canvas.Refresh(t.img)
+	t.refresh()
 }
 
 // hide takes the tooltip off the chart.
@@ -280,8 +280,21 @@ func (t *tooltip) hide() {
 		return
 	}
 	t.img.Hide()
-	canvas.Refresh(t.img)
+	t.refresh()
 }
+
+// refresh repaints the tooltip through the canvas the chart is on.
+//
+// Not canvas.Refresh, which looks the object up in Fyne's canvas cache — and
+// that cache only learns about objects the canvas has walked while they were
+// visible. The tooltip is born hidden, so the refresh of its first Show found
+// no canvas and painted nothing: the tooltip appeared only once something else
+// repainted the window, a wheel scrolling the list around a chart that does
+// not zoom being the usual one, and worked from then on because by then the
+// canvas had seen it. A chart whose hover redraws — one with an overlay — hid
+// the problem by repainting anyway. The chart itself is on screen, so its
+// canvas is known; see [repaint] for when it is not.
+func (t *tooltip) refresh() { repaint(t.c, t.img) }
 
 // render draws the tooltip's box and label into its own surface, and hands the
 // pixels to the canvas object.
@@ -364,7 +377,7 @@ func (t *tooltip) render(content TooltipContent, dpr float64) error {
 	// frame when it does.
 	t.img.Image = clone(img)
 	t.img.Resize(fyne.NewSize(float32(w), float32(h)))
-	t.img.Refresh()
+	t.refresh()
 	return nil
 }
 

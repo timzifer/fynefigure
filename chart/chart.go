@@ -207,6 +207,52 @@ func (c *Chart) Err() error { return c.renderr }
 // that already runs on Fyne's goroutine.
 func (c *Chart) Refresh() { c.BaseWidget.Refresh() }
 
+// Show shows a chart that was hidden.
+//
+// It is BaseWidget.Show with the repaint that one leaves out. BaseWidget.Show
+// refreshes the widget and nothing else, and a refresh reaches the screen
+// through the canvas Fyne has on record for the object — which it records only
+// for objects it has painted. A chart that starts hidden has never been
+// painted, so showing it marked no window dirty: it was neither laid out nor
+// drawn, and its tooltips with it, until something else on the window
+// repainted — a scroll, a label changing — and it appeared then.
+func (c *Chart) Show() {
+	if c.Visible() {
+		return
+	}
+	c.BaseWidget.Show()
+	repaint(c, c)
+}
+
+// repaint asks for obj to be painted again on the canvas anchor is on.
+//
+// canvas.Refresh(obj) would look obj up in Fyne's canvas cache, which knows
+// only what has been painted, so it drops the refresh of an object on its way
+// onto the screen — a tooltip being shown for the first time, a chart that
+// started hidden. The anchor is the object that is on screen, or about to be.
+// When even that has never been painted there is no canvas to ask, and every
+// window is asked instead: a window the chart is not on repaints once for
+// nothing, and the one it is on lays it out and draws it.
+func repaint(anchor, obj fyne.CanvasObject) {
+	app := fyne.CurrentApp()
+	if app == nil {
+		return
+	}
+	drv := app.Driver()
+	if drv == nil {
+		return
+	}
+	if cv := drv.CanvasForObject(anchor); cv != nil {
+		cv.Refresh(obj)
+		return
+	}
+	for _, w := range drv.AllWindows() {
+		if cv := w.Canvas(); cv != nil {
+			cv.Refresh(obj)
+		}
+	}
+}
+
 // Redraw asks for a frame from anywhere.
 //
 // It is [Chart.Refresh] for a goroutine of your own: a producer appending to a

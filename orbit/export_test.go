@@ -1,5 +1,10 @@
 package orbit
 
+import (
+	"testing"
+	"time"
+)
+
 // Pointer is the layer that takes the pointer for a chart.
 type Pointer = pointer
 
@@ -24,4 +29,14 @@ func SelectionRings(c *Chart) (total, hidden int) {
 		}
 	}
 	return total, hidden
+}
+
+// WheelSettles sets how long a wheel has to be still to be over, for the rest
+// of the test. A test that sends two notches and expects one gesture needs the
+// gap between them to be shorter than this, which on a runner drawing under the
+// race detector 120ms is not.
+func WheelSettles(t *testing.T, d time.Duration) {
+	was := wheelSettles
+	wheelSettles = d
+	t.Cleanup(func() { wheelSettles = was })
 }

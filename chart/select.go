@@ -127,10 +127,10 @@ func (c *Chart) clicked(ev figure.Event) {
 		return
 	}
 	sel := c.sel
-	if !ev.Found || ev.Hit.Row < 0 {
+	if !ev.Found || ev.Hit.Row < 0 || (c.cfg.selectable != nil && !c.cfg.selectable(ev.Hit)) {
 		// A click on nothing clears the selection, which is the gesture every
 		// reader already knows and the only way to unpick the last row without
-		// finding it again.
+		// finding it again. A mark [SelectWhere] turns down counts as nothing.
 		sel = nil
 	} else {
 		ref := fynefigure.Ref{

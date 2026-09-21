@@ -319,3 +319,31 @@ func rowsDigest(t *testing.T, c *chart.Chart, y int) uint64 {
 	}
 	return sum
 }
+
+// A mark SelectWhere turns down is not picked, not even for a frame: the click
+// is a click on nothing, and nothing is reported or ringed.
+func TestSelectWhereTurnsAMarkDown(t *testing.T) {
+	c := chart.New(trackedPlot(), chart.Interactive(true), chart.ThemeFont(false), chart.Select(true),
+		chart.SelectWhere(func(h figure.Hit) bool { return h.Panel == 1 }))
+	shownAt(t, c)
+
+	calls := 0
+	c.OnSelect(func(fynefigure.Selection) { calls++ })
+
+	pos, hit := markAt(t, c)
+	if hit.Panel != 0 {
+		t.Fatalf("the first mark found is in panel %d, want the panel above the band", hit.Panel)
+	}
+	before := pixels(t, c)
+	click(c, pos)
+
+	if sel := c.Selection(); len(sel) != 0 {
+		t.Errorf("a mark SelectWhere turned down was picked: %+v", sel)
+	}
+	if calls != 0 {
+		t.Errorf("OnSelect was told %d times about a click that picked nothing", calls)
+	}
+	if pixels(t, c) != before {
+		t.Error("a click on a mark that cannot be picked changed the chart")
+	}
+}

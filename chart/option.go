@@ -39,6 +39,7 @@ type config struct {
 
 	selects     bool
 	multiSelect bool
+	selectable  func(figure.Hit) bool
 	ring        figure.Highlight
 }
 
@@ -362,6 +363,25 @@ func Select(on bool) Option { return func(c *config) { c.selects = on } }
 // a touch screen has none. A caller wanting shift-to-add reads its own key
 // events and calls [Chart.SetMultiSelect].
 func MultiSelect(on bool) Option { return func(c *config) { c.multiSelect = on } }
+
+// SelectWhere limits what a click can pick to the marks ok accepts. A click on
+// a mark it turns down is a click on nothing, and clears the selection the way
+// one would. nil, the default, accepts every mark. It does nothing without
+// [Select].
+//
+// It is decided before the ring is drawn rather than after [Chart.OnSelect]
+// has reported. A caller clearing an unwanted pick from its handler has to do
+// it outside the chart's lock, which is a frame later — and for that frame the
+// ring is on screen, round a row the reader was never able to pick.
+//
+// A chart with a band of spans under a curve is the case it exists for: the
+// band is what a reader picks, and a point on the curve is not a thing.
+//
+// ok runs with the chart held, as [Chart.OnSelect] does, and must not call back
+// into it.
+func SelectWhere(ok func(figure.Hit) bool) Option {
+	return func(c *config) { c.selectable = ok }
+}
 
 // Ring sets what the mark round a picked row looks like. The zero value takes
 // the theme's label colour at six device units, which is a little larger than a

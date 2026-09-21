@@ -104,6 +104,22 @@ func TestACoarseFrameIsNotMistakenForTheDisplay(t *testing.T) {
 	}
 }
 
+// A painter that asked for a pixel or so more than was rasterized — rounding,
+// at any fractional size — asked it of the size the chart had then. A resize
+// as large as a maximize must not divide that by the new size and rasterize
+// the bigger chart at the pixel count of the smaller one.
+func TestAResizeForgetsWhatThePainterAskedOfTheOldSize(t *testing.T) {
+	c, _ := shown(t, fyne.NewSize(500, 300))
+
+	raster := c.Target().Object().(*canvas.Raster)
+	raster.Generator(501, 300)
+
+	c.Resize(fyne.NewSize(1500, 900))
+	if got := buffer(t, c); got.X != 1500 || got.Y != 900 {
+		t.Errorf("after growing to 1500x900 the chart rasterizes %v", got)
+	}
+}
+
 // buffer is the size of the pixel buffer the chart is currently rasterized at.
 func buffer(t *testing.T, c *chart.Chart) image.Point {
 	t.Helper()

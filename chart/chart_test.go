@@ -269,7 +269,7 @@ func TestAChartThatWasNeverLaidOutDoesNothing(t *testing.T) {
 	}
 	chart.PointerOf(c).MouseOut()
 	chart.PointerOf(c).DoubleTapped(&fyne.PointEvent{})
-	chart.PointerOf(c).Scrolled(&fyne.ScrollEvent{Scrolled: fyne.NewDelta(0, 4)})
+	chart.WheelOf(c).Scrolled(&fyne.ScrollEvent{Scrolled: fyne.NewDelta(0, 4)})
 	chart.PointerOf(c).DragEnd()
 
 	if err := c.Close(); err != nil {

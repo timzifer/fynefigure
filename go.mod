@@ -7,8 +7,8 @@ go 1.25.0
 // one of the rasterizer, and says which.
 require (
 	fyne.io/fyne/v2 v2.7.3
-	github.com/timzifer/figure v0.11.0
-	github.com/timzifer/figure/backend/gg v0.11.0
+	github.com/timzifer/figure v0.12.0
+	github.com/timzifer/figure/backend/gg v0.12.0
 )
 
 require (

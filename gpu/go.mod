@@ -14,8 +14,8 @@ go 1.25.0
 // before the child could build.
 
 require (
-	github.com/timzifer/figure v0.11.0
-	github.com/timzifer/figure/backend/gg v0.11.0
+	github.com/timzifer/figure v0.12.0
+	github.com/timzifer/figure/backend/gg v0.12.0
 	github.com/timzifer/figure/backend/gg/gpu v0.3.0
 )
 

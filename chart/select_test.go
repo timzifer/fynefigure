@@ -226,3 +226,96 @@ func pixels(t *testing.T, c *chart.Chart) uint64 {
 	}
 	return sum
 }
+
+// trackedPlot is a panel and a band under it, each drawing one layer of three
+// rectangles over the same stretches of time.
+//
+// It is the shape a gantt strip under a curve has, and the shape that shows a
+// selection resolved against the wrong panel: figure numbers layers per panel,
+// so both hold a layer 0 with a row 1, and they are different rows of
+// different tables.
+func trackedPlot() *figure.Plot {
+	spans := func() *data.Table {
+		return data.NewTable().
+			Float64("start", []float64{0, 4, 8}).
+			Float64("end", []float64{3, 7, 11}).
+			Float64("low", []float64{0, 0, 0}).
+			Float64("high", []float64{1, 1, 1})
+	}
+	rect := func(src *data.Table) geom.Geom {
+		return geom.Rect(src, geom.X("start"), geom.X2("end"), geom.Y("low"), geom.Y2("high"))
+	}
+
+	p := figure.New(figure.Size(400, 250))
+	p.X(scale.Linear())
+	p.Add(rect(spans()))
+	p.Track(figure.Bottom, figure.TrackSize(60),
+		figure.TrackScale(scale.Linear(scale.Domain(0, 1)))).
+		Add(rect(spans()))
+	return p
+}
+
+// A row picked in a band is ringed in that band and nowhere else. The panel
+// above has a layer and a row with the same numbers, and ringing it too marks
+// something the reader did not pick.
+func TestASelectionInABandStaysInTheBand(t *testing.T) {
+	c := chart.New(trackedPlot(), chart.Interactive(true), chart.ThemeFont(false), chart.Select(true))
+	shownAt(t, c)
+
+	var hit figure.Hit
+	found := false
+	c.Plot().On(figure.Hover, func(ev figure.Event) {
+		if ev.Found && !ev.Hit.Kind.Guides() && ev.Hit.Panel == 1 && ev.Hit.Row >= 0 {
+			hit, found = ev.Hit, true
+		}
+	})
+	var pos fyne.Position
+	for y := float32(296); y > 4 && !found; y -= 2 {
+		for x := float32(4); x < 500 && !found; x += 2 {
+			pos = fyne.NewPos(x, y)
+			chart.PointerOf(c).MouseMoved(&desktop.MouseEvent{PointEvent: fyne.PointEvent{Position: pos}})
+		}
+	}
+	if !found {
+		t.Fatal("no mark was found in the band")
+	}
+
+	img := c.Target().Image()
+	if img == nil {
+		t.Fatal("the chart has no pixels")
+	}
+	ratio := float32(img.Bounds().Dy()) / c.Size().Height
+	// The panel is everything above the band. The pointer may be anywhere in
+	// the band, which is 60 units tall, and the ring round the band's row
+	// reaches a few units past its middle — so a band's height and a ring
+	// above the pointer is clear of both.
+	above := int((pos.Y - 70) * ratio)
+	before := rowsDigest(t, c, above)
+
+	click(c, pos)
+	sel := c.Selection()
+	if len(sel) != 1 || sel[0].View != 1 || sel[0].Row != hit.Row {
+		t.Fatalf("clicking the band picked %+v, want row %d of panel 1", sel, hit.Row)
+	}
+	if rowsDigest(t, c, above) != before {
+		t.Error("a row picked in the band was ringed in the panel above it as well")
+	}
+}
+
+// rowsDigest is [pixels] over the rows above y alone.
+func rowsDigest(t *testing.T, c *chart.Chart, y int) uint64 {
+	t.Helper()
+	img := c.Target().Image()
+	if img == nil {
+		t.Fatal("the chart has no pixels")
+	}
+	var sum uint64
+	b := img.Bounds()
+	for py := b.Min.Y; py < y && py < b.Max.Y; py++ {
+		for px := b.Min.X; px < b.Max.X; px++ {
+			r, g, bl, a := img.At(px, py).RGBA()
+			sum = sum*31 + uint64(r) + uint64(g)<<8 + uint64(bl)<<16 + uint64(a)<<24
+		}
+	}
+	return sum
+}

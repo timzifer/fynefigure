@@ -181,6 +181,14 @@ type marks struct {
 	// resolved back to the table the caller handed in.
 	layers []geom.Geom
 
+	// tracked says the chart has bands beside its panel. figure numbers layers
+	// per panel, and a band's panel holds the band's layers rather than the
+	// plot's — so layer 0 of the band and layer 0 of the panel are different
+	// tables, and a layer and a row only name a row together with the panel
+	// they were picked in. Without bands every panel draws the plot's layers,
+	// and the number alone is enough.
+	tracked bool
+
 	// ring is what actually draws. Keeping one rather than making it per frame
 	// is what stops a selection costing an allocation on every pointer move.
 	ring figure.Highlight
@@ -214,8 +222,11 @@ func (m *marks) DrawOverlay(b ir.Backend, f figure.OverlayFrame) {
 func (m *marks) locate(dst []ir.Point, ref fynefigure.Ref) []ir.Point {
 	// The cheap path: a ref this chart made itself names a layer and a row of
 	// this chart's own table, so the index can be asked straight out.
-	if ref.Layer >= 0 && ref.Row >= 0 && m.keyAt(ref.Layer, ref.Row) == ref.Key {
+	if ref.Layer >= 0 && ref.Row >= 0 && m.keyAt(ref.View, ref.Layer, ref.Row) == ref.Key {
 		for p := range m.panels() {
+			if !m.draws(p, ref.View) {
+				continue
+			}
 			if at, ok := m.idx.Locate(p, ref.Layer, ref.Row); ok {
 				dst = append(dst, at)
 			}
@@ -230,10 +241,15 @@ func (m *marks) locate(dst []ir.Point, ref fynefigure.Ref) []ir.Point {
 	// screen rather than over the table — the index holds what was drawn — and
 	// it happens only for a selection this chart did not make.
 	for p := range m.panels() {
+		if m.tracked && p != 0 {
+			// A band's layers are not the plot's, so the plot's key columns
+			// say nothing about its rows.
+			continue
+		}
 		for layer := range m.layers {
 			m.rows = m.idx.RowsOf(p, layer, m.rows[:0])
 			for _, r := range m.rows {
-				if m.keyAt(layer, r.Row) == ref.Key {
+				if m.keyAt(p, layer, r.Row) == ref.Key {
 					dst = append(dst, r.At)
 				}
 			}
@@ -244,10 +260,26 @@ func (m *marks) locate(dst []ir.Point, ref fynefigure.Ref) []ir.Point {
 
 func (m *marks) panels() int { return len(m.idx.Panels()) }
 
+// draws reports whether panel p can hold a row picked in panel view: every
+// panel when they all draw the plot's layers, and only the one it was picked
+// in when bands hold layers of their own. A view of -1 was not picked with a
+// pointer, and says nothing about where the row is.
+func (m *marks) draws(p, view int) bool {
+	return !m.tracked || view < 0 || p == view
+}
+
 // keyAt reads what a layer calls one of its rows, or "" for a layer that names
 // no key column. It is [figure.Live]'s own keyOf, which is unexported — three
 // calls, and the reason each of them is the reason figure gives.
-func (m *marks) keyAt(layer, row int) string {
+//
+// panel says whose layer it is. A band's layers are not reachable from here —
+// figure has no accessor for them — so a row in a band reads as unnamed. A band
+// that names a key column is therefore not linked by key; figure's keyOf reads
+// the plot's layers as well and cannot name it either.
+func (m *marks) keyAt(panel, layer, row int) string {
+	if m.tracked && panel > 0 {
+		return ""
+	}
 	if layer < 0 || row < 0 || layer >= len(m.layers) {
 		return ""
 	}

@@ -95,6 +95,9 @@ type Chart struct {
 	// ptr is the layer that takes the pointer. It is always in the widget's
 	// tree and hidden unless the chart is [Interactive]; see input.go.
 	ptr *pointer
+	// roll is the layer that takes the wheel. It is apart from ptr so that it
+	// can be hidden alone — see [PanZoom].
+	roll *wheel
 
 	// The overlay layer. overlay is what a caller installed and brush is the
 	// rubber band of a [DragMode] drag; ov composes the two and is what figure
@@ -171,6 +174,7 @@ func New(p *figure.Plot, opts ...Option) *Chart {
 		c.brush = &figure.Brush{}
 	}
 	c.ptr = newPointer(c, c.cfg.interactive)
+	c.roll = newWheel(c, c.zooms())
 	c.ExtendBaseWidget(c)
 	return c
 }
@@ -308,7 +312,7 @@ func (c *Chart) CreateRenderer() fyne.WidgetRenderer {
 	c.ExtendBaseWidget(c)
 	c.ensureTarget()
 	c.tip = newTooltip(c)
-	objects := append([]fyne.CanvasObject{c.target.Object(), c.ptr}, c.tip.objects()...)
+	objects := append([]fyne.CanvasObject{c.target.Object(), c.roll, c.ptr}, c.tip.objects()...)
 	return &renderer{c: c, objects: objects}
 }
 

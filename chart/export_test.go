@@ -23,3 +23,13 @@ type Pointer = pointer
 // without a canvas deciding whether they reach it. It works whether or not the
 // chart is [Interactive]; a test of that goes through the canvas.
 func PointerOf(c *Chart) *Pointer { return c.ptr }
+
+// Wheel is the layer that takes the wheel for a chart.
+type Wheel = wheel
+
+// WheelOf is [PointerOf] for the wheel.
+func WheelOf(c *Chart) *Wheel { return c.roll }
+
+// WheelShown reports whether the wheel layer is there to be found, which is
+// whether a scroll container around the chart gets the wheel or not.
+func WheelShown(c *Chart) bool { return c.roll.Visible() }

@@ -335,7 +335,7 @@ func band(c *chart.Chart, from, to fyne.Position) {
 }
 
 func scroll(c *chart.Chart, at fyne.Position, notches float32) {
-	chart.PointerOf(c).Scrolled(&fyne.ScrollEvent{
+	chart.WheelOf(c).Scrolled(&fyne.ScrollEvent{
 		PointEvent: fyne.PointEvent{Position: at},
 		Scrolled:   fyne.NewDelta(0, notches),
 	})
@@ -412,5 +412,37 @@ func TestPanZoomOffHoldsTheView(t *testing.T) {
 	scroll(c, fyne.NewPos(250, 150), 3)
 	if !moved(before, domains(c)) {
 		t.Error("the wheel did not zoom after SetPanZoom(true)")
+	}
+}
+
+// With PanZoom off the wheel is not taken at all, so that a chart standing in
+// a scrolled list lets the list scroll. Taking it and ignoring it would stop
+// the list dead under every chart.
+func TestPanZoomOffLeavesTheWheelToTheList(t *testing.T) {
+	c := chart.New(keyedPlot(), chart.Interactive(true), chart.ThemeFont(false))
+	shownAt(t, c)
+	if !chart.WheelShown(c) {
+		t.Fatal("an interactive chart does not take the wheel")
+	}
+
+	c.SetPanZoom(false)
+	if chart.WheelShown(c) {
+		t.Error("a chart that may not zoom still takes the wheel from the list around it")
+	}
+	c.SetPanZoom(true)
+	if !chart.WheelShown(c) {
+		t.Error("the wheel did not come back with SetPanZoom(true)")
+	}
+
+	fixed := chart.New(keyedPlot(), chart.Interactive(true), chart.ThemeFont(false), chart.PanZoom(false))
+	shownAt(t, fixed)
+	if chart.WheelShown(fixed) {
+		t.Error("PanZoom(false) at construction still takes the wheel")
+	}
+
+	picture := chart.New(keyedPlot(), chart.ThemeFont(false))
+	shownAt(t, picture)
+	if chart.WheelShown(picture) {
+		t.Error("a chart that is not interactive takes the wheel")
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/test"
 	"github.com/timzifer/figure/three"
 	"github.com/timzifer/fynefigure/orbit"
@@ -33,6 +34,20 @@ func TestACoarseChartDrawsFewerPixelsUntilItIsSharpenedAgain(t *testing.T) {
 	c.SetCoarse(false)
 	if got := c.Target().Image().Bounds().Dx(); got != full {
 		t.Errorf("after sharpening the frame is %d pixels wide, want %d again", got, full)
+	}
+}
+
+// A pixel the painter asked for at the old size is not a device pixel ratio
+// at the new one: a chart grown as far as a maximize rasterizes at its new
+// size, not at the pixel count it had before.
+func TestAResizeForgetsWhatThePainterAskedOfTheOldSize(t *testing.T) {
+	c, _ := shown(t, fyne.NewSize(500, 300), plot())
+
+	c.Target().Object().(*canvas.Raster).Generator(501, 300)
+
+	c.Resize(fyne.NewSize(1500, 900))
+	if got := c.Target().Image().Bounds(); got.Dx() != 1500 || got.Dy() != 900 {
+		t.Errorf("after growing to 1500x900 the chart rasterizes %dx%d", got.Dx(), got.Dy())
 	}
 }
 

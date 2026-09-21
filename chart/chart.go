@@ -551,7 +551,9 @@ func (c *Chart) follows() bool {
 // shows the view the reader dragged to and the next frame snaps it back to the
 // data. Ignoring the gesture is the honest version of what would happen
 // anyway, without the flicker.
-func (c *Chart) steers() bool { return !c.follows() || c.cfg.pause }
+//
+// It is not, either, on a chart that was told [PanZoom] false.
+func (c *Chart) steers() bool { return !c.cfg.fixed && (!c.follows() || c.cfg.pause) }
 
 // tracksRows reports whether the chart should record which source row is
 // behind each mark.

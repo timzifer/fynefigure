@@ -82,6 +82,14 @@ func (c *Chart) SetInteractive(on bool) {
 	}
 }
 
+// SetPanZoom lets a reader move the view, or stops them. It is [PanZoom] after
+// construction, and leaves the view where it is either way.
+func (c *Chart) SetPanZoom(on bool) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	c.cfg.fixed = !on
+}
+
 // Interactive reports whether a reader can hover, drag, zoom and click the
 // chart. See [Interactive].
 func (c *Chart) Interactive() bool {
@@ -315,7 +323,9 @@ func (p *pointer) DoubleTapped(*fyne.PointEvent) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	if c.in == nil {
+	if c.in == nil || c.cfg.fixed {
+		// A view nobody may move is not put back either: where it stands is
+		// where the program put it. See [PanZoom].
 		return
 	}
 	c.steered = false

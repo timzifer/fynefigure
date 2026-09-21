@@ -41,6 +41,10 @@ type config struct {
 	multiSelect bool
 	selectable  func(figure.Hit) bool
 	ring        figure.Highlight
+
+	// fixed says a reader may not move the view. It is the negative of
+	// [PanZoom] so that the zero config lets them, as it always has.
+	fixed bool
 }
 
 func defaults() config {
@@ -74,6 +78,19 @@ const DefaultWheelScale = 4
 //
 // [Chart.SetInteractive] changes it on a chart already on screen.
 func Interactive(on bool) Option { return func(c *config) { c.interactive = on } }
+
+// PanZoom lets a reader move the view: drag to pan, the wheel to zoom and a
+// double click to put it back. It is on by default, and does nothing without
+// [Interactive].
+//
+// Off, the pointer still reads the chart — hover and its tooltip, a click that
+// picks a row, a drag that selects — and nothing it does moves the axes. It is
+// for a chart whose view is set from code and must stay there: several charts
+// held on one time range by the program, which a reader dragging one of them
+// would pull apart.
+//
+// [Chart.SetPanZoom] changes it on a chart already on screen.
+func PanZoom(on bool) Option { return func(c *config) { c.fixed = !on } }
 
 // MinSize sets the smallest size the widget asks its layout for. The default
 // is 240x160: a chart with axes and a legend has nothing useful to show below

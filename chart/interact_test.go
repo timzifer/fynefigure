@@ -377,3 +377,40 @@ func moved(a, b []float64) bool {
 	}
 	return false
 }
+
+// With PanZoom off nothing the pointer does moves the view — not a drag, not
+// the wheel, not a double click — and the pointer still reads the chart: a
+// click still picks a row.
+func TestPanZoomOffHoldsTheView(t *testing.T) {
+	c := chart.New(keyedPlot(), chart.Interactive(true), chart.ThemeFont(false),
+		chart.Select(true), chart.PanZoom(false))
+	shownAt(t, c)
+
+	views := 0
+	c.OnViewChange(func(figure.View) { views++ })
+	before := domains(c)
+
+	band(c, fyne.NewPos(120, 80), fyne.NewPos(300, 220))
+	scroll(c, fyne.NewPos(250, 150), 3)
+	chart.PointerOf(c).DoubleTapped(&fyne.PointEvent{Position: fyne.NewPos(250, 150)})
+
+	if moved(before, domains(c)) {
+		t.Error("the view moved on a chart that was told PanZoom(false)")
+	}
+	if views != 0 {
+		t.Errorf("the chart reported %d view changes nobody could have made", views)
+	}
+
+	pos, _ := markAt(t, c)
+	click(c, pos)
+	if len(c.Selection()) != 1 {
+		t.Error("PanZoom(false) took the click away as well")
+	}
+
+	// And back on, the same wheel moves it.
+	c.SetPanZoom(true)
+	scroll(c, fyne.NewPos(250, 150), 3)
+	if !moved(before, domains(c)) {
+		t.Error("the wheel did not zoom after SetPanZoom(true)")
+	}
+}

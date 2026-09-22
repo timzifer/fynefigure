@@ -82,6 +82,10 @@ func main() {
 	w.Resize(fyne.NewSize(1400, 820))
 	k := newKitchen(w, cat)
 	w.SetContent(k.content())
+	// The panel's numbers move on a ticker, started here rather than by
+	// newKitchen: under Fyne's test driver fyne.Do runs where it is called,
+	// so a ticker in a test would refresh the panel beside the test itself.
+	go k.tick()
 	w.SetOnClosed(k.close)
 	k.open(*first)
 	w.ShowAndRun()

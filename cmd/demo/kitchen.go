@@ -47,7 +47,6 @@ func newKitchen(w fyne.Window, cat *catalogue) *kitchen {
 	k.stage = container.NewStack()
 	k.tree = k.newTree()
 	k.panel = newPanel(k)
-	go k.tick()
 	return k
 }
 

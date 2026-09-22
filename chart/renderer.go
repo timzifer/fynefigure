@@ -42,13 +42,21 @@ func (r *renderer) MinSize() fyne.Size { return r.c.cfg.min }
 func (r *renderer) Objects() []fyne.CanvasObject { return r.objects }
 
 // Refresh redraws the chart. It is what BaseWidget.Refresh reaches.
+//
+// The frame is queued rather than drawn here, like one asked for by
+// [Chart.Redraw], and the two coalesce: a container refreshing its children
+// and a caller redrawing the chart with new data in the same turn cost one
+// frame, not two.
 func (r *renderer) Refresh() {
 	r.c.lock.Lock()
-	defer r.c.lock.Unlock()
-
 	r.c.syncTheme()
-	r.c.checkScale()
-	r.c.draw()
+	// Rescaling paints; a hidden chart rescales when it is shown.
+	if r.c.Visible() {
+		r.c.checkScale()
+	}
+	r.c.lock.Unlock()
+
+	r.c.schedule()
 }
 
 // Destroy closes the chart. A widget that has left the tree keeps no pixels.

@@ -200,6 +200,13 @@ between frames, so it never reads a stream half-written. From a goroutine of
 your own, ask for a frame with `c.Redraw()` — every other method here belongs
 to Fyne's goroutine.
 
+`Redraw` and `Refresh` queue the frame rather than draw it, and a chart asked
+again before its turn draws once: a container refreshing its children and new
+data arriving in the same turn cost one frame. A hidden chart draws nothing —
+Fyne lays out hidden widgets too — and catches up when it is shown. To release
+a zoom only to set a view straight after, `c.ResetView()` does what `Autoscale`
+does without painting the released view or reporting it.
+
 A sliding window needs two things a static chart does not, and `chart.Follow`
 does both for the x axis by default.
 

@@ -3,6 +3,7 @@ package chart
 import (
 	"image"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -122,6 +123,12 @@ type Chart struct {
 	// selDirty says a click changed the selection inside the surface hold the
 	// release took, so the release owes it a frame. See [Chart.up].
 	selDirty bool
+
+	// queued says a frame asked for by Redraw or Refresh is waiting for its
+	// turn on Fyne's goroutine. It is atomic rather than under lock because
+	// Redraw may come from anywhere, including from inside a handler that
+	// holds the lock. See [Chart.schedule].
+	queued atomic.Bool
 
 	stream *data.Stream
 	stopFn func()
@@ -259,7 +266,33 @@ func repaint(anchor, obj fyne.CanvasObject) {
 // stream, a ticker, a network read. The frame is drawn on Fyne's goroutine in
 // its turn, which is what keeps the rasterizer and the painter off each
 // other's pixels.
-func (c *Chart) Redraw() { fyne.Do(c.locked(c.draw)) }
+//
+// Asking again before that turn has come asks for the same frame: however
+// many times a chart is redrawn and refreshed in between, it is rasterized
+// once. A chart that is hidden is not rasterized at all; showing it refreshes
+// it, which draws what it missed.
+func (c *Chart) Redraw() { c.schedule() }
+
+// schedule queues a frame on Fyne's goroutine unless one is queued already.
+//
+// It must not be called with the lock held: under the test driver fyne.Do
+// runs the frame where it is, and the frame takes the lock.
+func (c *Chart) schedule() {
+	if c.queued.CompareAndSwap(false, true) {
+		fyne.Do(c.drawQueued)
+	}
+}
+
+// drawQueued draws the frame schedule queued.
+func (c *Chart) drawQueued() {
+	c.queued.Store(false)
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	if !c.Visible() {
+		return
+	}
+	c.draw()
+}
 
 // locked wraps an operation so that it holds the chart while it runs. It is
 // what a timer or another goroutine posts, since those do not arrive on the
@@ -305,6 +338,26 @@ func (c *Chart) Autoscale() error {
 	c.present()
 	c.viewChanged()
 	return nil
+}
+
+// ResetView releases every zoom and pan like [Chart.Autoscale], but draws in
+// its turn rather than now, and tells nobody.
+//
+// It is for a caller that sets the view itself straight after — charts fitted
+// to a common range release their old zoom first, so a stale one does not hold
+// against the new range. Autoscale would paint the released view for nothing
+// and report it to [Chart.OnViewChange] as if the reader had moved.
+//
+// Until the frame is drawn the axes have no domain of their own: read the view
+// after setting one, not after releasing it.
+func (c *Chart) ResetView() {
+	c.lock.Lock()
+	if c.live != nil {
+		c.steered = false
+		c.live.ResetView()
+	}
+	c.lock.Unlock()
+	c.schedule()
 }
 
 // Close releases the chart's pixels and stops anything animating it.
@@ -388,7 +441,9 @@ func (c *Chart) resize(size fyne.Size) {
 	}
 
 	if w != c.w || h != c.h {
-		if err := c.target.Render(func() error { return c.live.Resize(w, h) }); err != nil {
+		// SetSize rather than Resize: Resize paints a frame, and the draw
+		// below paints another one over it.
+		if err := c.target.Render(func() error { return c.live.SetSize(w, h) }); err != nil {
 			c.renderr = err
 			return
 		}
@@ -401,6 +456,13 @@ func (c *Chart) resize(size fyne.Size) {
 		c.mu.Lock()
 		c.painterPx = image.Point{}
 		c.mu.Unlock()
+	}
+	// A hidden chart takes its size and nothing else. Fyne lays out what is
+	// hidden as well — a stack of views switched by Hide gives every one of
+	// them the size — and a frame nobody can see costs the same as one on
+	// screen. Showing the chart refreshes it, and that draws.
+	if !c.Visible() {
+		return
 	}
 	c.checkScale()
 	c.draw()

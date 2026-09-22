@@ -33,3 +33,11 @@ func WheelOf(c *Chart) *Wheel { return c.roll }
 // WheelShown reports whether the wheel layer is there to be found, which is
 // whether a scroll container around the chart gets the wheel or not.
 func WheelShown(c *Chart) bool { return c.roll.Visible() }
+
+// HoldFrame marks a frame as queued without queueing one, and DrawHeld draws
+// it. Under the test driver fyne.Do runs a frame where it is asked for, so
+// this is how a test sees what a frame asked for while one is waiting does.
+func HoldFrame(c *Chart) { c.queued.Store(true) }
+
+// DrawHeld draws the frame HoldFrame marked.
+func DrawHeld(c *Chart) { c.drawQueued() }

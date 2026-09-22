@@ -16,7 +16,7 @@ go 1.25.0
 require (
 	github.com/timzifer/figure v0.14.0
 	github.com/timzifer/figure/backend/gg v0.12.0
-	github.com/timzifer/figure/backend/gg/gpu v0.3.0
+	github.com/timzifer/figure/backend/gg/gpu v0.4.0
 )
 
 require (

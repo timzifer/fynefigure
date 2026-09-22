@@ -6,7 +6,6 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/test"
-	"github.com/timzifer/fynefigure/gpu"
 )
 
 // open puts the kitchen in a test window at the size the demo opens at.
@@ -14,7 +13,10 @@ func open(t *testing.T) *kitchen {
 	t.Helper()
 	test.NewTempApp(t)
 	w := test.NewTempWindow(t, nil)
-	k := newKitchen(w, catalog())
+	// No ticker: under the test driver fyne.Do runs on the caller's goroutine,
+	// so a panel refreshing on its own would touch the widgets this test is
+	// driving. The test refreshes what it needs to read.
+	k := newKitchen(w, catalog(), 0)
 	w.SetContent(k.content())
 	w.Resize(fyne.NewSize(1400, 820))
 	t.Cleanup(k.close)
@@ -58,10 +60,10 @@ func TestEveryEntryBuildsAndPaints(t *testing.T) {
 // chart again, and has to leave a chart that draws on whichever tier it lands.
 func TestTheGPUSwitchRebuildsAChartThatPaints(t *testing.T) {
 	k := open(t)
-	was := gpu.Enabled()
+	was := tierEnabled()
 	t.Cleanup(func() {
 		if was {
-			gpu.Enable()
+			tierEnable()
 		}
 	})
 	k.show(k.cat.find("decimation"))
@@ -70,10 +72,10 @@ func TestTheGPUSwitchRebuildsAChartThatPaints(t *testing.T) {
 	for _, on := range []bool{false, true, false, true} {
 		got := k.setGPU(on)
 		settle(k)
-		if on && got != gpu.Available() {
-			t.Errorf("setGPU(true) = %v with the tier available = %v", got, gpu.Available())
+		if on && got != tierAvailable() {
+			t.Errorf("setGPU(true) = %v with the tier available = %v", got, tierAvailable())
 		}
-		if !on && gpu.Enabled() {
+		if !on && tierEnabled() {
 			t.Error("setGPU(false) left the tier on")
 		}
 		if err := k.err(); err != nil {
@@ -83,7 +85,7 @@ func TestTheGPUSwitchRebuildsAChartThatPaints(t *testing.T) {
 		if s.painted == 0 {
 			t.Errorf("after setGPU(%v): nothing was painted", on)
 		}
-		t.Logf("GPU %-5v  enabled %-5v  draw %s", on, gpu.Enabled(), ms(s.draw.last))
+		t.Logf("GPU %-5v  enabled %-5v  draw %s", on, tierEnabled(), ms(s.draw.last))
 	}
 }
 

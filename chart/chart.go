@@ -95,6 +95,9 @@ type Chart struct {
 	// ptr is the layer that takes the pointer. It is always in the widget's
 	// tree and hidden unless the chart is [Interactive]; see input.go.
 	ptr *pointer
+	// roll is the layer that takes the wheel. It is apart from ptr so that it
+	// can be hidden alone — see [PanZoom].
+	roll *wheel
 
 	// The overlay layer. overlay is what a caller installed and brush is the
 	// rubber band of a [DragMode] drag; ov composes the two and is what figure
@@ -171,6 +174,7 @@ func New(p *figure.Plot, opts ...Option) *Chart {
 		c.brush = &figure.Brush{}
 	}
 	c.ptr = newPointer(c, c.cfg.interactive)
+	c.roll = newWheel(c, c.zooms())
 	c.ExtendBaseWidget(c)
 	return c
 }
@@ -308,7 +312,7 @@ func (c *Chart) CreateRenderer() fyne.WidgetRenderer {
 	c.ExtendBaseWidget(c)
 	c.ensureTarget()
 	c.tip = newTooltip(c)
-	objects := append([]fyne.CanvasObject{c.target.Object(), c.ptr}, c.tip.objects()...)
+	objects := append([]fyne.CanvasObject{c.target.Object(), c.roll, c.ptr}, c.tip.objects()...)
 	return &renderer{c: c, objects: objects}
 }
 
@@ -343,6 +347,14 @@ func (c *Chart) resize(size fyne.Size) {
 			return
 		}
 		c.w, c.h = w, h
+		// What the painter asked for was asked of the old size. Divided by
+		// the new one it reads as a device pixel ratio that has nothing to do
+		// with the display — after a jump as large as a maximize, a fraction
+		// of the real one, which rasterizes the chart at about the pixel count
+		// it had before and stretches that.
+		c.mu.Lock()
+		c.painterPx = image.Point{}
+		c.mu.Unlock()
 	}
 	c.checkScale()
 	c.draw()
@@ -356,7 +368,11 @@ func (c *Chart) ensureTarget() {
 	var opts []fynefigure.Option
 	if c.cfg.font {
 		if regular, bold, italic, ok := c.themeFonts(); ok {
-			opts = append(opts, fynefigure.Font(regular, bold, italic))
+			// The rasterizer's own fonts stand behind the theme's, for the
+			// glyphs the theme's typeface has not got — see [look.Fallback].
+			opts = append(opts,
+				fynefigure.Font(regular, bold, italic),
+				fynefigure.FallbackFont(look.Fallback()...))
 		}
 	}
 	c.target = fynefigure.New(opts...)
@@ -543,7 +559,9 @@ func (c *Chart) follows() bool {
 // shows the view the reader dragged to and the next frame snaps it back to the
 // data. Ignoring the gesture is the honest version of what would happen
 // anyway, without the flicker.
-func (c *Chart) steers() bool { return !c.follows() || c.cfg.pause }
+//
+// It is not, either, on a chart that was told [PanZoom] false.
+func (c *Chart) steers() bool { return !c.cfg.fixed && (!c.follows() || c.cfg.pause) }
 
 // tracksRows reports whether the chart should record which source row is
 // behind each mark.
@@ -628,9 +646,8 @@ func (c *Chart) hookEvents() {
 		}
 		c.clicked(ev)
 	})
-	if !c.cfg.tooltip {
-		return
-	}
+	// Registered whether or not the tooltip is on, so [Chart.SetTooltip] can
+	// turn it on later: show asks the config each time.
 	c.plot.On(figure.Hover, func(ev figure.Event) { c.tip.show(ev) })
 	c.plot.On(figure.Leave, func(figure.Event) { c.tip.hide() })
 	c.plot.On(figure.Pan, func(figure.Event) { c.tip.hide() })

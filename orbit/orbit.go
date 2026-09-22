@@ -342,6 +342,14 @@ func (c *Chart) resize(size fyne.Size) {
 			return
 		}
 		c.w, c.h = w, h
+		// What the painter asked for was asked of the old size. Divided by
+		// the new one it reads as a device pixel ratio that has nothing to do
+		// with the display — after a jump as large as a maximize, a fraction
+		// of the real one, which rasterizes the chart at about the pixel count
+		// it had before and stretches that.
+		c.mu.Lock()
+		c.painterPx = image.Point{}
+		c.mu.Unlock()
 	}
 	c.checkScale()
 	c.draw()

@@ -74,6 +74,17 @@ func basics() []Entry {
 				p.Y(scale.Linear(scale.Nice(), scale.Zero()))
 				p.Add(geom.Bar(src, geom.X("ms"), geom.Y("count"), geom.Color(palette.Green)))
 			})},
+		{ID: "bars-extruded", Group: g, Title: "Bars in depth (oblique)",
+			Note: "Bars given a top and a side by an oblique coord, each face outlined. The depth carries no variable, the axes still bound the data, and hovering a top face still finds its bar.",
+			Plot: flat("Revenue by quarter", 700, 420, theme.Light, func(p *figure.Plot) {
+				p.X(scale.Ordinal())
+				p.Y(scale.Linear(scale.Nice(), scale.Zero()))
+				// A fill and a colour together outline the mark, and an
+				// extruded bar keeps that outline on all three of its faces.
+				p.Add(geom.Bar(quarterlyRevenue(), geom.X("quarter"), geom.Y("revenue"),
+					geom.Fill(palette.SkyBlue), geom.Color(palette.Blue),
+					geom.Extrude(true)))
+			}, figure.Coord(coord.Oblique(coord.Depth(0.08))), figure.YTitle("€ million"))},
 		{ID: "area", Group: g, Title: "Area band",
 			Note: "An interval drawn as an area between two columns, with the estimate as a line over it.",
 			Plot: flat("Estimate and interval", 700, 400, theme.Light, func(p *figure.Plot) {
@@ -265,6 +276,31 @@ func axes() []Entry {
 				p.Add(geom.Line(src, geom.X("i"), geom.Y("v"),
 					geom.Color(palette.Blue), geom.Decimate(geom.MinMax)))
 			}, figure.XTitle("sample"), figure.YTitle("volts"))},
+		{ID: "weibull", Group: g, Title: "Probability axis (Weibull paper)",
+			Note: "Failure times on a log axis against a complementary log-log probability axis. On this paper a Weibull population is a straight line whose slope is its shape β, and no tick can reach 0 or 1.",
+			Plot: flat("Bearing life on Weibull paper", 660, 500, theme.Light, func(p *figure.Plot) {
+				ranks := stat.MedianRank(bearingFailures())
+				rx, ry := make([]float64, len(ranks)), make([]float64, len(ranks))
+				for i, r := range ranks {
+					rx[i], ry[i] = r.X, r.Y
+				}
+				var lx, ly []float64
+				for t := 80.0; t <= 3000; t *= 1.05 {
+					lx, ly = append(lx, t), append(ly, bearingCDF(t))
+				}
+				p.X(scale.Log(scale.LogDomain(80, 3000)))
+				p.Y(scale.Probability(scale.CLogLog, scale.ProbabilityDomain(0.01, 0.99)))
+				p.Add(
+					geom.Line(figure.NewTable().Float64("t", lx).Float64("F", ly),
+						geom.X("t"), geom.Y("F"), geom.Color(palette.OkabeIto[0]), geom.Width(1.5),
+						geom.Label(fmt.Sprintf("β = %.1f, η = %.0f h", bearingBeta, bearingEta))),
+					geom.Scatter(figure.NewTable().Float64("t", rx).Float64("F", ry),
+						geom.X("t"), geom.Y("F"), geom.Color(palette.OkabeIto[1]), geom.Size(7),
+						geom.Label(fmt.Sprintf("%d bearings, median ranks", bearingUnits))),
+					geom.Segment(80, 1-1/math.E, bearingEta, 1-1/math.E, geom.Dash(2, 3)),
+					geom.Note(90, 0.68, "η: 63.2 % failed"),
+				)
+			}, figure.XTitle("hours to failure"), figure.YTitle("fraction failed"))},
 	}
 }
 
@@ -355,6 +391,21 @@ func stacking() []Entry {
 						geom.Y("lo"), geom.Y2("hi"), geom.X("lane"),
 						geom.ColorBy("range", scale.Qualitative(palette.Default))))
 			}, figure.YTitle("m/min"))},
+		{ID: "horizon", Group: g, Title: "Horizon",
+			Note: "A series folded into bands of equal height, each drawn at the panel's full height and told apart by colour: the strip stays readable at a height where a line chart stops being one.",
+			Plot: flat("Feeder load — six hours", 820, 220, theme.Light, func(p *figure.Plot) {
+				p.X(scale.Time())
+				p.Y(scale.Linear())
+				// The fold gives the vertical ladder up, so the colourbar is
+				// what names the bands — in kilowatts, about the idle draw the
+				// fold is measured from.
+				p.Add(geom.Horizon(meterLoad(),
+					geom.X("t"), geom.Y("kw"),
+					geom.BandHeight(meterBand),
+					geom.Baseline(meterBase),
+					geom.Label("load"),
+				))
+			}, figure.YTitle("kW from idle"))},
 	}
 }
 
@@ -471,6 +522,50 @@ func distributions() []Entry {
 						geom.Width(2), geom.Dash(6, 4), geom.Label("linear fit")),
 				)
 			}, figure.Legend(true))},
+		{ID: "survival", Group: g, Title: "Survival (Kaplan–Meier)",
+			Note: "Two trial arms as step curves that fall only at a relapse, with a 95 % band, a tick where a patient left still in remission, and the numbers at risk in a track on the shared time axis.",
+			Plot: flat("Remission, 6-MP against placebo", 700, 520, theme.Light, func(p *figure.Plot) {
+				p.X(scale.Linear(scale.Domain(-1.5, 36), scale.TickValues(0, 10, 20, 30)))
+				p.Y(scale.Linear(scale.Domain(0, 1), scale.NumberFormat("#%")))
+				p.Add(geom.Survival(remission(),
+					geom.X("weeks"), geom.Event("relapsed"), geom.GroupBy("arm"),
+					geom.Confidence(0.95), geom.CensorMarks(true)))
+				p.Track(figure.Bottom, figure.TrackSize(44), figure.TrackGrid(false)).
+					Add(geom.Text(remissionAtRisk(0, 10, 20, 30),
+						geom.X("weeks"), geom.Y("arm"), geom.TextBy("n")))
+			}, figure.XTitle("weeks"), figure.YTitle("in remission"))},
+		{ID: "roc", Group: g, Title: "ROC curves",
+			Note: "Two classifiers over the same cases, each a staircase from calling nothing positive to calling everything positive, with the area under it in the legend. The dashed diagonal is a coin toss.",
+			Plot: flat("Two classifiers, one set of cases", 560, 520, theme.Light, func(p *figure.Plot) {
+				p.X(scale.Linear(scale.Domain(0, 1)))
+				p.Y(scale.Linear(scale.Domain(0, 1)))
+				p.Add(geom.Segment(0, 0, 1, 1, geom.Dash(4, 4), geom.Color(palette.Gray)))
+				for i, c := range []struct {
+					name string
+					sep  float64
+				}{{"gradient boosting", 1.8}, {"logistic", 0.9}} {
+					fpr, tpr, auc := classifierROC(c.sep, i+1)
+					p.Add(geom.Line(figure.NewTable().Float64("fpr", fpr).Float64("tpr", tpr),
+						geom.X("fpr"), geom.Y("tpr"), geom.Color(palette.OkabeIto.At(i)), geom.Width(2),
+						geom.Label(fmt.Sprintf("%s, AUC %.3f", c.name, auc))))
+				}
+			}, figure.XTitle("false positive rate"), figure.YTitle("true positive rate"), figure.Legend(true))},
+		{ID: "correlogram", Group: g, Title: "Correlogram (ACF)",
+			Note: "The autocorrelation of a vibration signal by lag, against the 95 % white-noise bound: it decays over a few lags and comes back every twelve, which is the resonance.",
+			Plot: flat("Vibration, correlated with itself", 760, 400, theme.Light, func(p *figure.Plot) {
+				series := vibration()
+				const maxLag = 36
+				acf := stat.ACF(series, maxLag)
+				bound := stat.CorrelationBound(len(series), 1.96)
+				p.X(scale.Linear(scale.Domain(-0.8, maxLag+0.8)))
+				p.Y(scale.Linear(scale.Domain(-1, 1)))
+				p.Add(
+					geom.HLine(0, geom.Color(palette.Gray)),
+					geom.HBand(-bound, bound, geom.Label("95 % bound")),
+					geom.Bar(figure.NewTable().Float64("lag", ramp(0, maxLag, maxLag+1)).Float64("r", acf),
+						geom.X("lag"), geom.Y("r"), geom.Color(palette.Blue), geom.Label("ACF")),
+				)
+			}, figure.XTitle("lag (samples)"), figure.YTitle("autocorrelation"))},
 	}
 }
 
@@ -520,6 +615,16 @@ func fields() []Entry {
 		{ID: "contour-floor", Group: g, Title: "Surface with contour floor",
 			Note:  "The field as a 3D surface with the flat chart's isolines on its floor; drag to orbit.",
 			Scene: contourFloorScene},
+		{ID: "spectrogram", Group: g, Title: "Spectrogram (raster)",
+			Note: "A short-time Fourier transform drawn as one image, not 170 000 cells: a chirp, a steady tone and a click one millisecond wide. The Max resample keeps the click visible at any zoom.",
+			Plot: flat("Four seconds of audio", 900, 460, theme.Dark, func(p *figure.Plot) {
+				p.X(scale.Linear())
+				p.Y(scale.Linear())
+				p.Add(geom.Raster(spectrum(),
+					geom.X("t"), geom.Y("hz"), geom.Z("db"),
+					geom.ColorBy("db", scale.Sequential(palette.Magma)),
+					geom.Resample(geom.Max)))
+			}, figure.XTitle("time (s)"), figure.YTitle("frequency (Hz)"))},
 	}
 }
 
@@ -750,6 +855,40 @@ func relational() []Entry {
 					geom.From("from"), geom.To("to"), geom.Value("rps"),
 					geom.Baseline(1), geom.Padding(0.01)))
 			}, figure.Coord(coord.Polar()))},
+		{ID: "dendrogram-heatmap", Group: g, Title: "Dendrogram over heatmap",
+			Note: "Both clusterings of one matrix: the samples across the top and the genes up the left, each cell under the leaf that names it. The left tree is the same mark laid the other way round — its breadth runs up Y and its height out to the side.",
+			Plot: flat("Expression, clustered both ways", 640, 560, theme.Light, func(p *figure.Plot) {
+				samples, sampleLeaves := sampleTree()
+				genes, geneLeaves := geneTree()
+				// Both axes are pinned to their tree's leaf order. An axis left
+				// to discover its categories would learn them from the table.
+				p.X(scale.Ordinal(scale.Categories(sampleLeaves...), scale.OrdinalPadding(0)))
+				p.Y(scale.Ordinal(scale.Categories(geneLeaves...), scale.OrdinalPadding(0)))
+				p.Add(geom.Rect(expressionCells(),
+					geom.X("sample"), geom.Y("gene"),
+					geom.ColorBy("expr", scale.Diverging(palette.BlueOrange))))
+				p.Track(figure.Top, figure.TrackSize(110), figure.TrackScale(scale.Linear())).
+					Add(geom.Tree(samples,
+						geom.ID("node"), geom.Parent("under"), geom.Value("height"),
+						geom.Color(palette.Gray)))
+				// A left track shares the panel's Y, so the breadth has to be on
+				// Y — geom.Horizontal — and geom.Baseline(1) turns the height over
+				// so the leaves meet the cells and the root is at the outside,
+				// which is how a clustered heatmap is printed.
+				p.Track(figure.Left, figure.TrackSize(110), figure.TrackScale(scale.Linear())).
+					Add(geom.Tree(genes,
+						geom.ID("node"), geom.Parent("under"), geom.Value("height"),
+						geom.Orient(geom.Horizontal), geom.Baseline(1),
+						geom.Color(palette.Gray)))
+			})},
+		{ID: "radial-tree", Group: g, Title: "Radial tidy tree",
+			Note: "A module's package tree laid out tidily on its depth and bent round a polar coord, with the root at the hub.",
+			Plot: flat("A module, from the root out", 520, 520, bare, func(p *figure.Plot) {
+				layoutPlot(p)
+				p.Add(geom.Tree(moduleTree(),
+					geom.ID("node"), geom.Parent("under"),
+					geom.Color(palette.Blue), geom.Width(1.5)))
+			}, figure.Coord(coord.Polar(coord.Hole(0.08))), figure.Legend(false))},
 	}
 }
 
@@ -813,6 +952,46 @@ func annotations() []Entry {
 					fmt.Sprintf("peak %.1f dB at ω = %.2f rad/s", at.peak, at.w),
 					geom.Align(ir.AlignEnd, ir.AlignBaseline)))
 			}, figure.XTitle("open-loop phase (degrees)"), figure.YTitle("open-loop gain (dB)"), figure.Legend(false))},
+		{ID: "spc", Group: GroupAnnotations, Title: "Control chart (SPC)",
+			Note: "Fill weights against control limits computed from the first thirty readings and then frozen. The line changes colour exactly where it crosses a limit, and diamonds mark the readings Nelson's run rules flag once the filler drifts.",
+			Plot: flat("Fill weight, individuals chart", 760, 420, theme.Light, func(p *figure.Plot) {
+				w := fillWeights()
+				limits, _ := stat.LimitsIMR(w[:fillBaseline])
+				flags := stat.AppendRunRules(nil, w[fillBaseline:], limits)
+
+				n := ramp(1, float64(len(w)), len(w))
+				var fx, fy []float64
+				seen := map[int]bool{}
+				for _, f := range flags {
+					if row := fillBaseline + f.Row; !seen[row] {
+						seen[row] = true
+						fx, fy = append(fx, n[row]), append(fy, w[row])
+					}
+				}
+
+				p.X(scale.Linear(scale.Domain(0, 61)))
+				p.Add(
+					geom.VLine(fillBaseline+0.5, geom.Dash(3, 3), geom.Label("limits frozen")),
+					geom.HLine(limits.Centre, geom.Color(palette.Gray)),
+					geom.HLine(limits.Upper, geom.Color(palette.Vermilion), geom.Dash(6, 3)),
+					geom.HLine(limits.Lower, geom.Color(palette.Vermilion), geom.Dash(6, 3)),
+					geom.Line(figure.NewTable().Float64("n", n).Float64("w", w),
+						geom.X("n"), geom.Y("w"),
+						geom.ColorBy("w", scale.Threshold(
+							palette.Ramp{palette.Vermilion, palette.Blue, palette.Vermilion},
+							[]float64{limits.Lower, limits.Upper})),
+						// The limits are on the chart as rules with their values
+						// beside them; a colourbar would say them a second time.
+						geom.Guide(false)),
+					geom.Scatter(figure.NewTable().Float64("n", fx).Float64("w", fy),
+						geom.X("n"), geom.Y("w"), geom.Color(palette.Vermilion), geom.Size(8),
+						geom.Shape(ir.MarkerDiamond)),
+					geom.Note(1, limits.Upper+0.1, fmt.Sprintf("UCL %.2f", limits.Upper),
+						geom.Align(ir.AlignStart, ir.AlignBottom)),
+					geom.Note(1, limits.Lower+0.1, fmt.Sprintf("LCL %.2f", limits.Lower),
+						geom.Align(ir.AlignStart, ir.AlignBottom)),
+				)
+			}, figure.XTitle("sample"), figure.YTitle("grams"), figure.Legend(false))},
 	}
 }
 

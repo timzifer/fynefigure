@@ -27,7 +27,271 @@ func scenes() []Entry {
 		{ID: "line3", Group: g, Title: "3D trajectory (Lorenz)",
 			Note:  "The Lorenz attractor as one 3D path, which crosses itself in every flat projection but not in space.",
 			Scene: line3Scene},
+		{ID: "scatter3", Group: g, Title: "3D scatter",
+			Note:  "Two batches that overlap on the floor and part only in the third column. Each point drops a line to the floor, which is how its height reads; orbit to see the two clouds come apart.",
+			Scene: scatter3Scene},
+		{ID: "smith-sphere", Group: g, Title: "Smith sphere",
+			Note:  "The Smith chart carried onto the Riemann sphere. A negative resistance, which runs off the page of a flat chart, crosses the equator into the southern hemisphere and comes back.",
+			Scene: smithSphereScene},
+		{ID: "antenna-pattern", Group: g, Title: "Radiation pattern (spherical)",
+			Note:  "A four-element broadside array's power pattern as a surface on a spherical scene: the radius in every direction is the power sent that way.",
+			Scene: antennaScene},
+		{ID: "ribbon", Group: g, Title: "Ribbon (a line with width)",
+			Note:  "A descending approach drawn as a band rather than a stroke. The band is a surface, so it is shaded and it occludes: where the path crosses itself, the ribbon says which pass is in front and a line of constant width says nothing.",
+			Scene: ribbonScene},
+		{ID: "joint-orientations", Group: g, Title: "Spherical histogram",
+			Note:  "Which way a set of fractures point, binned into cells of equal area on the sphere and stood up at their count. A latitude–longitude grid would pile a false ring round the equator; bands of equal cos θ do not.",
+			Scene: jointScene},
+		{ID: "bloch", Group: g, Title: "Bloch sphere",
+			Note:  "A detuned Rabi oscillation as two dozen states on the Bloch sphere, starting at |0⟩. Consecutive states are joined along the arc between them, so the coarse sweep still runs over the surface rather than cutting through the ball.",
+			Scene: blochScene},
 	}
+}
+
+// scatter3Scene is two production batches measured on three dimensions. Their
+// length and width overlap, so the flat chart of those two sees one cloud; the
+// thickness is what tells them apart.
+func scatter3Scene() *three.Plot {
+	const n = 160
+	var l, w, t []float64
+	var batch []string
+	for i := range n {
+		b, off := "A", 0.0
+		if i%2 == 1 {
+			b, off = "B", 0.9
+		}
+		l = append(l, 20+0.6*noise(11000+i))
+		w = append(w, 12+0.5*noise(12000+i)+0.3*off)
+		t = append(t, 3+0.18*noise(13000+i)+off)
+		batch = append(batch, b)
+	}
+	src := figure.NewTable().Float64("l", l).Float64("w", w).Float64("t", t).String("batch", batch)
+
+	sc := three.NewScene(
+		three.XTitle("length (mm)"),
+		three.YTitle("width (mm)"),
+		three.ZTitle("thickness (mm)"),
+	).
+		X(scale.Linear(scale.Nice())).
+		Y(scale.Linear(scale.Nice())).
+		Z(scale.Linear(scale.Nice())).
+		Add(three.Scatter3(src, geom.X("l"), geom.Y("w"), geom.Z("t"),
+			geom.ColorBy("batch", scale.Qualitative(palette.OkabeIto)), geom.Size(6)))
+
+	return three.New(
+		three.Size(720, 560),
+		three.Title("Two batches, one floor"),
+		three.Theme(theme.Light),
+	).Scene(sc)
+}
+
+// smithSphereScene sweeps the input impedance of a one-port with a negative
+// resistance near resonance — the device an oscillator is built from — and
+// marks where the resistance changes sign.
+func smithSphereScene() *three.Plot {
+	impedance := func(w float64) (r, x float64) {
+		r = 1.2 - 1.8*math.Exp(-math.Pow((w-1)/0.25, 2))
+		x = 2 * (w - 1/w)
+		return r, x
+	}
+	var r, x, one, crossR, crossX, crossOne []float64
+	prev := 0.0
+	for k := 0; k <= 400; k++ {
+		ri, xi := impedance(0.25 + 2.75*float64(k)/400)
+		r, x, one = append(r, ri), append(x, xi), append(one, 1)
+		if k > 0 && (prev < 0) != (ri < 0) {
+			crossR, crossX, crossOne = append(crossR, ri), append(crossX, xi), append(crossOne, 1)
+		}
+		prev = ri
+	}
+	sweep := figure.NewTable().Float64("r", r).Float64("x", x).Float64("one", one)
+	marks := figure.NewTable().Float64("r", crossR).Float64("x", crossX).Float64("one", crossOne)
+
+	sc := three.NewScene(three.Spherical(three.Smith())).
+		Z(scale.Linear(scale.Domain(0, 1))).
+		Add(
+			three.Line3(sweep, geom.X("r"), geom.Y("x"), geom.Z("one"),
+				geom.Color(palette.Blue), geom.Width(2), geom.Label("z(ω)")),
+			three.Scatter3(marks, geom.X("r"), geom.Y("x"), geom.Z("one"),
+				geom.Color(palette.Vermilion), geom.Size(8), geom.Droplines(false),
+				geom.Label("r = 0")),
+		)
+	return three.New(
+		three.Size(560, 560),
+		three.Title("A negative resistance, on the Smith sphere"),
+		three.Theme(theme.Light),
+	).Scene(sc)
+}
+
+// antennaScene is four isotropic elements along x, half a wavelength apart,
+// each with a cosine element pattern over a ground plane.
+func antennaScene() *three.Plot {
+	const (
+		elements = 4
+		spacing  = 0.5 // wavelengths
+	)
+	gain := func(phi, theta float64) float64 {
+		th, ph := theta*math.Pi/180, phi*math.Pi/180
+		psi := 2 * math.Pi * spacing * math.Sin(th) * math.Cos(ph)
+		af := 1.0
+		if s := math.Sin(psi / 2); math.Abs(s) > 1e-9 {
+			af = math.Abs(math.Sin(elements*psi/2) / (elements * s))
+		}
+		el := math.Max(math.Cos(th), 0)
+		return (af * el) * (af * el)
+	}
+	var phi, theta, g []float64
+	for t := 0; t <= 180; t += 5 {
+		for p := 0; p < 360; p += 5 {
+			phi, theta = append(phi, float64(p)), append(theta, float64(t))
+			g = append(g, gain(float64(p), float64(t)))
+		}
+	}
+	src := figure.NewTable().Float64("phi", phi).Float64("theta", theta).Float64("gain", g)
+
+	sc := three.NewScene(three.Spherical(three.AxisEnds("x", "", "y", "", "z", ""))).
+		Z(scale.Linear(scale.Domain(0, 1))).
+		Add(three.Surface(src, geom.X("phi"), geom.Y("theta"), geom.Z("gain"),
+			geom.ColorBy("gain", scale.Sequential(palette.Viridis))))
+	return three.New(
+		three.Size(620, 560),
+		three.Title("A four-element broadside array"),
+		three.Theme(theme.Light),
+	).Scene(sc)
+}
+
+// blochScene drives a qubit off resonance: from |0⟩ it rotates about an axis
+// tilted from x towards z by the detuning, and closes the loop after one
+// period.
+func blochScene() *three.Plot {
+	const (
+		detuning = 0.6 // of the Rabi frequency
+		// Two dozen states is a coarse sweep, and it stays on the ball: two
+		// rows a step apart are joined along the great circle between them
+		// rather than by a chord through the inside of the sphere.
+		steps = 24
+	)
+	omega := math.Hypot(1, detuning)
+	ax, az := 1/omega, detuning/omega
+
+	var phi, theta, r []float64
+	for k := 0; k <= steps; k++ {
+		t := 2 * math.Pi * float64(k) / steps
+		// Rodrigues' rotation of (0, 0, 1) about (ax, 0, az) by t.
+		c, s := math.Cos(t), math.Sin(t)
+		x := ax * az * (1 - c)
+		y := -ax * s
+		z := c + az*az*(1-c)
+		phi = append(phi, math.Mod(math.Atan2(y, x)*180/math.Pi+360, 360))
+		theta = append(theta, math.Acos(math.Max(-1, math.Min(1, z)))*180/math.Pi)
+		r = append(r, 1)
+	}
+	path := figure.NewTable().Float64("phi", phi).Float64("theta", theta).Float64("r", r)
+	ends := figure.NewTable().
+		Float64("phi", []float64{phi[0], phi[steps/2]}).
+		Float64("theta", []float64{theta[0], theta[steps/2]}).
+		Float64("r", []float64{1, 1})
+
+	// ASCII brackets: the rasterizer's embedded fonts have no ⟨ or ⟩, and a
+	// rune no face can draw is written as a question mark, so the ket would
+	// read |0? here. A chart that wants the printed spelling supplies a font
+	// that has them through fynefigure.FallbackFont.
+	sc := three.NewScene(three.Spherical(three.AxisEnds("|+>", "|->", "|+i>", "|-i>", "|0>", "|1>"))).
+		Z(scale.Linear(scale.Domain(0, 1))).
+		Add(
+			three.Line3(path, geom.X("phi"), geom.Y("theta"), geom.Z("r"),
+				geom.Color(palette.Blue), geom.Width(2), geom.Label("state")),
+			three.Scatter3(ends, geom.X("phi"), geom.Y("theta"), geom.Z("r"),
+				geom.Color(palette.Vermilion), geom.Size(9), geom.Label("start, half period")),
+		)
+	return three.New(
+		three.Size(560, 560),
+		three.Title("A detuned Rabi oscillation"),
+		three.Theme(theme.Light),
+	).Scene(sc)
+}
+
+// ribbonScene is an aircraft's approach: a descending spiral that passes over
+// its own track twice, which is what a band can say and a stroke cannot.
+func ribbonScene() *three.Plot {
+	const steps = 420
+	var east, north, alt []float64
+	for k := range steps + 1 {
+		t := float64(k) / steps
+		turns := 2.4 * 2 * math.Pi * t
+		radius := 9 - 5.5*t
+		east = append(east, radius*math.Cos(turns))
+		north = append(north, radius*math.Sin(turns))
+		alt = append(alt, 3200-2900*t)
+	}
+	src := figure.NewTable().Float64("east", east).Float64("north", north).Float64("alt", alt)
+
+	sc := three.NewScene(
+		three.XTitle("east (km)"),
+		three.YTitle("north (km)"),
+		three.ZTitle("altitude (ft)"),
+	).
+		X(scale.Linear(scale.Nice())).
+		Y(scale.Linear(scale.Nice())).
+		Z(scale.Linear(scale.Nice())).
+		// The width is in scene units and carries no reading: a band whose
+		// width meant an interval would be a flat line with a band under it.
+		Add(three.Ribbon(src, geom.X("east"), geom.Y("north"), geom.Z("alt"),
+			geom.Fill(palette.SkyBlue), geom.Thickness(0.045)))
+
+	return three.New(
+		three.Size(680, 560),
+		three.Title("A holding pattern, down to the runway"),
+		three.Theme(theme.Light),
+	).Scene(sc).Add(three.View{Camera: three.LookAt(three.Azimuth(-0.8), three.Elevation(0.35))})
+}
+
+// jointScene is the orientation of two fracture sets in a rock mass: a strike
+// azimuth and a plunge, which together are a direction and nothing else.
+//
+// There is no Z column. The count is the value, and the ball's own ladder is
+// the key — the same shape a radiation pattern is read with.
+func jointScene() *three.Plot {
+	var strike, plunge []float64
+	// A scattered background, sampled so that equal areas of the ball get
+	// equal numbers: the azimuth is uniform and the sine of the latitude is,
+	// which is the same substitution the binning is built on. Drawn against a
+	// lat/long grid it would pile a false ring round the equator.
+	for i := range 2000 {
+		strike = append(strike, 360*frac(9000+i))
+		plunge = append(plunge, math.Asin(2*frac(9700+i)-1)*180/math.Pi)
+	}
+	// Two fracture sets on top of it, each a spread of directions about a mean.
+	sets := []struct{ strike, plunge, spread float64 }{
+		{35, 58, 20},
+		{128, 12, 24},
+	}
+	for s, set := range sets {
+		for i := range 300 {
+			strike = append(strike, math.Mod(set.strike+set.spread*noise(11100+s*900+i)+360, 360))
+			p := set.plunge + 0.7*set.spread*noise(12100+s*900+i)
+			plunge = append(plunge, math.Max(-90, math.Min(90, p)))
+		}
+	}
+	src := figure.NewTable().Float64("strike", strike).Float64("plunge", plunge)
+
+	// Latitude reads the second angle as the angle up from the equator, which
+	// is what a plunge is measured as.
+	sc := three.NewScene(three.Spherical(three.Latitude(),
+		three.AxisEnds("E", "W", "N", "S", "up", "down"))).
+		// Zero keeps the radius proportional to the count, so a cell twice as
+		// full stands twice as far out.
+		Z(scale.Linear(scale.Zero())).
+		// The ramp is painted with the count the layer worked out, so the
+		// column named here is a label rather than a column of the table.
+		Add(three.Histogram3(src, geom.X("strike"), geom.Y("plunge"),
+			geom.Bins(5), geom.ColorBy("count", scale.Sequential(palette.Viridis))))
+
+	return three.New(
+		three.Size(580, 560),
+		three.Title("Two fracture sets, by orientation"),
+		three.Theme(theme.Light),
+	).Scene(sc)
 }
 
 func surfaceScene() *three.Plot {

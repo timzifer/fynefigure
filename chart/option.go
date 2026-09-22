@@ -39,7 +39,12 @@ type config struct {
 
 	selects     bool
 	multiSelect bool
+	selectable  func(figure.Hit) bool
 	ring        figure.Highlight
+
+	// fixed says a reader may not move the view. It is the negative of
+	// [PanZoom] so that the zero config lets them, as it always has.
+	fixed bool
 }
 
 func defaults() config {
@@ -47,7 +52,6 @@ func defaults() config {
 		detail:  1,
 		followX: true,
 		min:     fyne.NewSize(240, 160),
-		tooltip: true,
 		format:  DefaultTooltip,
 		theme:   true,
 		wheel:   DefaultWheelScale,
@@ -61,8 +65,9 @@ func defaults() config {
 // that zoomed by the raw number would barely move.
 const DefaultWheelScale = 4
 
-// Interactive lets a reader at the chart: hover and its tooltip, a drag, the
-// wheel, a click on a legend row, a double click. It is off by default.
+// Interactive lets a reader at the chart: hover, a drag, the wheel, a click on
+// a legend row, a double click. It is off by default. A tooltip is a second
+// opt-in on top of it: see [Tooltip].
 //
 // Off, the chart is a picture. It takes no pointer events at all, so it scrolls
 // with a scroll container around it and leaves every gesture to whatever is
@@ -74,6 +79,19 @@ const DefaultWheelScale = 4
 // [Chart.SetInteractive] changes it on a chart already on screen.
 func Interactive(on bool) Option { return func(c *config) { c.interactive = on } }
 
+// PanZoom lets a reader move the view: drag to pan, the wheel to zoom and a
+// double click to put it back. It is on by default, and does nothing without
+// [Interactive].
+//
+// Off, the pointer still reads the chart — hover and its tooltip, a click that
+// picks a row, a drag that selects — and nothing it does moves the axes. It is
+// for a chart whose view is set from code and must stay there: several charts
+// held on one time range by the program, which a reader dragging one of them
+// would pull apart.
+//
+// [Chart.SetPanZoom] changes it on a chart already on screen.
+func PanZoom(on bool) Option { return func(c *config) { c.fixed = !on } }
+
 // MinSize sets the smallest size the widget asks its layout for. The default
 // is 240x160: a chart with axes and a legend has nothing useful to show below
 // that, and a widget that reports the raster's own minimum collapses to
@@ -82,7 +100,15 @@ func MinSize(w, h float32) Option {
 	return func(c *config) { c.min = fyne.NewSize(w, h) }
 }
 
-// Tooltip turns the hover tooltip on or off. It is on by default.
+// Tooltip turns the hover tooltip on or off. It is off by default.
+//
+// It is a second opt-in, not a part of [Interactive]: a chart shows a tooltip
+// only when it is both interactive and asked for one. A chart that hands its
+// hover to the application — a readout under the stage, a crosshair, a linked
+// table — wants the pointer without a box floating over the marks, and a
+// tooltip turned on for a chart that is not interactive waits until it is.
+//
+// [Chart.SetTooltip] changes it on a chart already on screen.
 func Tooltip(on bool) Option { return func(c *config) { c.tooltip = on } }
 
 // TooltipFormat replaces what the tooltip says. It is called for the mark
@@ -246,24 +272,23 @@ func FollowPause(on bool) Option { return func(c *config) { c.pause = on } }
 func FollowTheme(on bool) Option { return func(c *config) { c.theme = on } }
 
 // ThemeFont draws the chart's labels in the application's typeface, read from
-// the Fyne theme. It is off by default, and the reason is worth knowing before
-// turning it on.
+// the Fyne theme. It is off by default.
 //
 // Fyne renders text through a shaper that falls back: a character its theme
-// font has no glyph for is drawn from another font, so the label appears. The
-// rasterizer that draws a chart is handed one font and has no fallback, so the
-// same character is drawn as nothing at all — silently, leaving a gap.
+// font has no glyph for is drawn from another font, so the label appears. That
+// matters here because Fyne's own theme font is NotoSans-Regular, which has no
+// glyph for U+2264, U+2265 or U+221E — a chart titled "30° ≤ x" and an axis
+// labelled in ∞ reach for exactly those.
 //
-// That is not hypothetical. Fyne's own theme font is NotoSans-Regular, which
-// has no glyph for U+2264, U+2265 or U+221E: a chart titled "30° ≤ x" loses
-// the ≤ and keeps the degree sign, and an axis labelled in ∞ loses that. Those
-// are exactly the characters a chart reaches for.
+// So a chart drawn in the theme's typeface keeps the rasterizer's own fonts
+// behind it, for the glyphs the theme's has not got: the symbol is drawn, in
+// the face the same plot's exported PNG draws it in, and the metrics stay the
+// theme font's so nothing moves. See [fynefigure.FallbackFont].
 //
-// So the default is the fonts every other figure raster uses. They cover more,
-// and they are what makes a chart on screen comparable pixel for pixel with the
-// PNG the same plot exports. Turn this on when the chart's labels are plain
-// enough for the theme's font to carry, and matching the application's
-// typeface matters more.
+// What is left of the difference is the typeface itself. The default is the
+// fonts every other figure raster uses, which is what makes a chart on screen
+// comparable pixel for pixel with the PNG the same plot exports. Turn this on
+// when matching the application's typeface matters more.
 func ThemeFont(on bool) Option { return func(c *config) { c.font = on } }
 
 // TrackRows records which source row is behind each mark, so that a hover can
@@ -362,6 +387,25 @@ func Select(on bool) Option { return func(c *config) { c.selects = on } }
 // a touch screen has none. A caller wanting shift-to-add reads its own key
 // events and calls [Chart.SetMultiSelect].
 func MultiSelect(on bool) Option { return func(c *config) { c.multiSelect = on } }
+
+// SelectWhere limits what a click can pick to the marks ok accepts. A click on
+// a mark it turns down is a click on nothing, and clears the selection the way
+// one would. nil, the default, accepts every mark. It does nothing without
+// [Select].
+//
+// It is decided before the ring is drawn rather than after [Chart.OnSelect]
+// has reported. A caller clearing an unwanted pick from its handler has to do
+// it outside the chart's lock, which is a frame later — and for that frame the
+// ring is on screen, round a row the reader was never able to pick.
+//
+// A chart with a band of spans under a curve is the case it exists for: the
+// band is what a reader picks, and a point on the curve is not a thing.
+//
+// ok runs with the chart held, as [Chart.OnSelect] does, and must not call back
+// into it.
+func SelectWhere(ok func(figure.Hit) bool) Option {
+	return func(c *config) { c.selectable = ok }
+}
 
 // Ring sets what the mark round a picked row looks like. The zero value takes
 // the theme's label colour at six device units, which is a little larger than a

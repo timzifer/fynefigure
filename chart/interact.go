@@ -103,6 +103,7 @@ func (c *Chart) syncOverlay() {
 	}
 	if rings != nil {
 		rings.idx, rings.sel, rings.layers = c.live.Index(), c.sel, c.plot.Layers()
+		rings.tracked = len(c.plot.Tracks()) > 0
 	}
 	c.ov.user, c.ov.marks, c.ov.brush = c.overlay, rings, band
 	c.live.Overlay(c.ov)

@@ -24,13 +24,14 @@ import (
 // the line under the stage to report what is under the pointer.
 type env struct {
 	interactive bool
+	tooltip     bool
 	detail      bool
 	status      func(string)
 }
 
 // chartOpts are the options every flat chart gets, then the caller's.
 func (e env) chartOpts(extra ...chart.Option) []chart.Option {
-	opts := []chart.Option{chart.Interactive(e.interactive), chart.TrackRows(true)}
+	opts := []chart.Option{chart.Interactive(e.interactive), chart.Tooltip(e.tooltip), chart.TrackRows(true)}
 	if e.detail {
 		// Coarse while it is dragged, sharp when it stops: worth about three
 		// times the frame rate on the CPU rasterizer.
@@ -137,6 +138,13 @@ func (v *view) setInteractive(on bool) {
 	}
 	for _, c := range v.orbits {
 		c.SetInteractive(on)
+	}
+}
+
+// setTooltip reaches the flat charts only: a scene has no tooltip.
+func (v *view) setTooltip(on bool) {
+	for _, c := range v.flats {
+		c.SetTooltip(on)
 	}
 }
 

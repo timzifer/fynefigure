@@ -14,6 +14,7 @@ import (
 	"github.com/timzifer/figure"
 	ggbackend "github.com/timzifer/figure/backend/gg"
 	"github.com/timzifer/figure/ir"
+	"github.com/timzifer/fynefigure/internal/look"
 )
 
 // TooltipStyle is how a tooltip is drawn. It is the styling half of a
@@ -147,6 +148,10 @@ type tooltip struct {
 	// different face from the axis under it would look like a bug.
 	fonts [3][]byte
 
+	// fallback are the faces consulted for a rune the box's typeface has no
+	// glyph for, which is the chart's own fallback list.
+	fallback [][]byte
+
 	// last is what has been rendered, so that a pointer moving along one mark
 	// re-renders nothing.
 	last  tipKey
@@ -178,6 +183,7 @@ func newTooltip(c *Chart) *tooltip {
 	if c.cfg.font {
 		if regular, bold, italic, ok := c.themeFonts(); ok {
 			t.fonts = [3][]byte{regular, bold, italic}
+			t.fallback = look.Fallback()
 		}
 	}
 	return t
@@ -190,13 +196,15 @@ func (t *tooltip) objects() []fyne.CanvasObject {
 	return []fyne.CanvasObject{t.img}
 }
 
-// setFont puts the tooltip in the typeface the chart has just been rebuilt in.
-// Pass all three as nil for the rasterizer's own fonts.
-func (t *tooltip) setFont(regular, bold, italic []byte) {
+// setFont puts the tooltip in the typeface the chart has just been rebuilt in,
+// with the same fallbacks behind it. Pass all three as nil for the
+// rasterizer's own fonts.
+func (t *tooltip) setFont(regular, bold, italic []byte, fallback ...[]byte) {
 	if t == nil {
 		return
 	}
 	t.fonts = [3][]byte{regular, bold, italic}
+	t.fallback = fallback
 	t.release()
 }
 
@@ -402,6 +410,9 @@ func (t *tooltip) surface() *ggbackend.Surface {
 	var opts []ggbackend.Option
 	if len(t.fonts[0]) > 0 {
 		opts = append(opts, ggbackend.WithFont(t.fonts[0], t.fonts[1], t.fonts[2]))
+	}
+	if len(t.fallback) > 0 {
+		opts = append(opts, ggbackend.WithFallbackFont(t.fallback...))
 	}
 	return ggbackend.NewSurface(opts...)
 }

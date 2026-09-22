@@ -27,8 +27,9 @@ import (
 
 // wheelSettles is how long after the last wheel notch a wheel gesture counts as
 // over. A drag says when it ends; a wheel does not, so it is timed. It is
-// package chart's number for the same question.
-const wheelSettles = 120 * time.Millisecond
+// package chart's number for the same question. It is a variable only so that
+// a test on a slow runner can widen it: see export_test.go.
+var wheelSettles = 120 * time.Millisecond
 
 // SetCoarse draws the chart at the resolution [Detail] names, or back at the
 // screen's own.

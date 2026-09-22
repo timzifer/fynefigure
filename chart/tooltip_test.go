@@ -14,7 +14,7 @@ import (
 )
 
 func TestATooltipSaysWhatIsUnderThePointer(t *testing.T) {
-	c := chart.New(plot(), chart.Interactive(true), chart.ThemeFont(false),
+	c := chart.New(plot(), chart.Interactive(true), chart.ThemeFont(false), chart.Tooltip(true),
 		chart.TooltipFormat(func(h figure.Hit) string { return fmt.Sprintf("at %.2f", h.X) }))
 	win := test.NewTempWindow(t, c)
 	win.Resize(fyne.NewSize(500, 300))
@@ -56,6 +56,76 @@ func TestATooltipCanBeTurnedOff(t *testing.T) {
 	hoverAMark(t, c, win)
 	if tooltipImage(t, c).Visible() {
 		t.Error("a chart with the tooltip turned off showed one")
+	}
+}
+
+// Interactive lets a reader hover; it does not float a box over the marks.
+// That takes a second opt-in.
+func TestAnInteractiveChartShowsNoTooltipUnlessAskedFor(t *testing.T) {
+	c := chart.New(plot(), chart.Interactive(true), chart.ThemeFont(false))
+	win := test.NewTempWindow(t, c)
+	win.Resize(fyne.NewSize(500, 300))
+	c.Resize(fyne.NewSize(500, 300))
+
+	if c.Tooltip() {
+		t.Error("a chart made interactive reports its tooltip on without being asked")
+	}
+	if !hoverAMark(t, c, win) {
+		t.Skip("no position over this chart found a mark")
+	}
+	if tooltipImage(t, c).Visible() {
+		t.Errorf("an interactive chart showed a tooltip reading %q without being asked for one", chart.TipText(c))
+	}
+}
+
+// A tooltip asked for on a still chart waits until the chart is interactive.
+func TestATooltipWaitsForTheChartToBeInteractive(t *testing.T) {
+	c := chart.New(plot(), chart.ThemeFont(false), chart.Tooltip(true))
+	win := test.NewTempWindow(t, c)
+	win.Resize(fyne.NewSize(500, 300))
+	c.Resize(fyne.NewSize(500, 300))
+
+	for x := float32(20); x < 480; x += 4 {
+		test.MoveMouse(win.Canvas(), fyne.NewPos(x, 150))
+	}
+	if got := chart.TipText(c); got != "" {
+		t.Errorf("a still chart with a tooltip asked for showed one reading %q", got)
+	}
+
+	c.SetInteractive(true)
+	if !hoverAMark(t, c, win) {
+		t.Skip("no position over this chart found a mark")
+	}
+	if !tooltipImage(t, c).Visible() {
+		t.Error("the chart made interactive showed no tooltip")
+	}
+}
+
+func TestSetTooltipSwitchesALiveChart(t *testing.T) {
+	c := chart.New(plot(), chart.Interactive(true), chart.ThemeFont(false))
+	win := test.NewTempWindow(t, c)
+	win.Resize(fyne.NewSize(500, 300))
+	c.Resize(fyne.NewSize(500, 300))
+
+	c.SetTooltip(true)
+	if !c.Tooltip() {
+		t.Fatal("SetTooltip(true) left the tooltip off")
+	}
+	if !hoverAMark(t, c, win) {
+		t.Skip("no position over this chart found a mark")
+	}
+	label := tooltipImage(t, c)
+	if !label.Visible() {
+		t.Fatal("hovering a mark after SetTooltip(true) showed no tooltip")
+	}
+
+	c.SetTooltip(false)
+	if label.Visible() {
+		t.Error("the tooltip is still showing after SetTooltip(false)")
+	}
+	hoverAMark(t, c, win)
+	if label.Visible() {
+		t.Error("hovering after SetTooltip(false) showed a tooltip")
 	}
 }
 
@@ -180,7 +250,7 @@ func tooltipImage(t *testing.T, c *chart.Chart) *canvas.Image {
 // it was drawn into.
 func shownTooltip(t *testing.T, label string) *canvas.Image {
 	t.Helper()
-	c := chart.New(plot(), chart.Interactive(true), chart.ThemeFont(false),
+	c := chart.New(plot(), chart.Interactive(true), chart.ThemeFont(false), chart.Tooltip(true),
 		chart.TooltipFormat(func(figure.Hit) string { return label }))
 	win := test.NewTempWindow(t, c)
 	win.Resize(fyne.NewSize(500, 300))

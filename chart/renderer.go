@@ -29,6 +29,8 @@ func (r *renderer) Layout(size fyne.Size) {
 	// making the chart interactive needs no layout of its own.
 	r.c.ptr.Move(fyne.NewPos(0, 0))
 	r.c.ptr.Resize(size)
+	r.c.roll.Move(fyne.NewPos(0, 0))
+	r.c.roll.Resize(size)
 	r.c.resize(size)
 }
 

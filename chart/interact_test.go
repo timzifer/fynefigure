@@ -335,7 +335,7 @@ func band(c *chart.Chart, from, to fyne.Position) {
 }
 
 func scroll(c *chart.Chart, at fyne.Position, notches float32) {
-	chart.PointerOf(c).Scrolled(&fyne.ScrollEvent{
+	chart.WheelOf(c).Scrolled(&fyne.ScrollEvent{
 		PointEvent: fyne.PointEvent{Position: at},
 		Scrolled:   fyne.NewDelta(0, notches),
 	})
@@ -376,4 +376,73 @@ func moved(a, b []float64) bool {
 		}
 	}
 	return false
+}
+
+// With PanZoom off nothing the pointer does moves the view — not a drag, not
+// the wheel, not a double click — and the pointer still reads the chart: a
+// click still picks a row.
+func TestPanZoomOffHoldsTheView(t *testing.T) {
+	c := chart.New(keyedPlot(), chart.Interactive(true), chart.ThemeFont(false),
+		chart.Select(true), chart.PanZoom(false))
+	shownAt(t, c)
+
+	views := 0
+	c.OnViewChange(func(figure.View) { views++ })
+	before := domains(c)
+
+	band(c, fyne.NewPos(120, 80), fyne.NewPos(300, 220))
+	scroll(c, fyne.NewPos(250, 150), 3)
+	chart.PointerOf(c).DoubleTapped(&fyne.PointEvent{Position: fyne.NewPos(250, 150)})
+
+	if moved(before, domains(c)) {
+		t.Error("the view moved on a chart that was told PanZoom(false)")
+	}
+	if views != 0 {
+		t.Errorf("the chart reported %d view changes nobody could have made", views)
+	}
+
+	pos, _ := markAt(t, c)
+	click(c, pos)
+	if len(c.Selection()) != 1 {
+		t.Error("PanZoom(false) took the click away as well")
+	}
+
+	// And back on, the same wheel moves it.
+	c.SetPanZoom(true)
+	scroll(c, fyne.NewPos(250, 150), 3)
+	if !moved(before, domains(c)) {
+		t.Error("the wheel did not zoom after SetPanZoom(true)")
+	}
+}
+
+// With PanZoom off the wheel is not taken at all, so that a chart standing in
+// a scrolled list lets the list scroll. Taking it and ignoring it would stop
+// the list dead under every chart.
+func TestPanZoomOffLeavesTheWheelToTheList(t *testing.T) {
+	c := chart.New(keyedPlot(), chart.Interactive(true), chart.ThemeFont(false))
+	shownAt(t, c)
+	if !chart.WheelShown(c) {
+		t.Fatal("an interactive chart does not take the wheel")
+	}
+
+	c.SetPanZoom(false)
+	if chart.WheelShown(c) {
+		t.Error("a chart that may not zoom still takes the wheel from the list around it")
+	}
+	c.SetPanZoom(true)
+	if !chart.WheelShown(c) {
+		t.Error("the wheel did not come back with SetPanZoom(true)")
+	}
+
+	fixed := chart.New(keyedPlot(), chart.Interactive(true), chart.ThemeFont(false), chart.PanZoom(false))
+	shownAt(t, fixed)
+	if chart.WheelShown(fixed) {
+		t.Error("PanZoom(false) at construction still takes the wheel")
+	}
+
+	picture := chart.New(keyedPlot(), chart.ThemeFont(false))
+	shownAt(t, picture)
+	if chart.WheelShown(picture) {
+		t.Error("a chart that is not interactive takes the wheel")
+	}
 }

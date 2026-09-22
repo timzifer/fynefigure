@@ -34,6 +34,7 @@ const (
 	GroupFields        = "Fields"
 	GroupPolar         = "Polar"
 	GroupSmith         = "Smith"
+	GroupTernary       = "Ternary"
 	GroupRelational    = "Relational"
 	GroupAnnotations   = "Annotations"
 	GroupLayout        = "Layout"
@@ -44,7 +45,8 @@ const (
 func Groups() []string {
 	return []string{
 		GroupBasics, GroupAxes, GroupStacking, GroupDistributions, GroupFields,
-		GroupPolar, GroupSmith, GroupRelational, GroupAnnotations, GroupLayout, Group3D,
+		GroupPolar, GroupSmith, GroupTernary, GroupRelational, GroupAnnotations,
+		GroupLayout, Group3D,
 	}
 }
 
@@ -53,7 +55,7 @@ func All() []Entry {
 	var out []Entry
 	for _, g := range [][]Entry{
 		basics(), axes(), stacking(), distributions(), fields(),
-		polar(), smith(), relational(), annotations(), layout(), scenes(),
+		polar(), smith(), ternary(), relational(), annotations(), layout(), scenes(),
 	} {
 		out = append(out, g...)
 	}
@@ -65,6 +67,11 @@ func All() []Entry {
 // screen: add an id at the front when you add an entry for one.
 func Newest() []string {
 	return []string{
+		"soil-texture", "alloy-prism", "joint-orientations", "ribbon",
+		"smith-sphere", "scatter3", "antenna-pattern", "bloch",
+		"spectrogram", "survival", "weibull", "dendrogram-heatmap", "spc",
+		"bars-extruded", "radial-tree", "roc", "correlogram",
+		"horizon",
 		"nichols", "nichols-peak", "smith-vswr",
 		"contour", "contour-heatmap", "contour-floor",
 		"surface", "cascade", "bar3", "line3",

@@ -13,6 +13,7 @@ import (
 	fynetheme "fyne.io/fyne/v2/theme"
 	"github.com/timzifer/figure/ir"
 	figuretheme "github.com/timzifer/figure/theme"
+	"golang.org/x/image/font/gofont/goregular"
 )
 
 // State is what a chart was last built for. Comparing two of them is how a
@@ -104,6 +105,21 @@ func Fonts(th fyne.Theme) (regular, bold, italic []byte, ok bool) {
 	}
 	return regular, fontBytes(th, fyne.TextStyle{Bold: true}), fontBytes(th, fyne.TextStyle{Italic: true}), true
 }
+
+// Fallback is the face consulted for a rune the theme's typeface has no glyph
+// for: the rasterizer's own embedded regular font.
+//
+// Fyne draws text through a shaper that falls back to another font for a
+// character its theme font has no glyph for, and a rasterizer handed one font
+// cannot. Fyne's own NotoSans-Regular has no ≤, ≥ or ∞ — exactly the
+// characters a chart's labels reach for — so a chart drawn in the
+// application's typeface and nothing else loses them. The Go fonts have them,
+// and they are the fonts every other figure raster is drawn in, so a symbol
+// that falls back is drawn the way the same plot's exported PNG draws it.
+//
+// Only the regular face is offered. A fallback supplies a glyph, not a weight,
+// and the metrics stay the chart's own font's either way.
+func Fallback() [][]byte { return [][]byte{goregular.TTF} }
 
 func fontBytes(th fyne.Theme, style fyne.TextStyle) []byte {
 	res := th.Font(style)

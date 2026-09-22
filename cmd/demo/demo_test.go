@@ -6,7 +6,6 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/test"
-	"github.com/timzifer/fynefigure/gpu"
 )
 
 // open puts the kitchen in a test window at the size the demo opens at.
@@ -58,10 +57,10 @@ func TestEveryEntryBuildsAndPaints(t *testing.T) {
 // chart again, and has to leave a chart that draws on whichever tier it lands.
 func TestTheGPUSwitchRebuildsAChartThatPaints(t *testing.T) {
 	k := open(t)
-	was := gpu.Enabled()
+	was := gpuTier.Enabled()
 	t.Cleanup(func() {
 		if was {
-			gpu.Enable()
+			gpuTier.Enable()
 		}
 	})
 	k.show(k.cat.find("decimation"))
@@ -70,10 +69,10 @@ func TestTheGPUSwitchRebuildsAChartThatPaints(t *testing.T) {
 	for _, on := range []bool{false, true, false, true} {
 		got := k.setGPU(on)
 		settle(k)
-		if on && got != gpu.Available() {
-			t.Errorf("setGPU(true) = %v with the tier available = %v", got, gpu.Available())
+		if on && got != gpuTier.Available() {
+			t.Errorf("setGPU(true) = %v with the tier available = %v", got, gpuTier.Available())
 		}
-		if !on && gpu.Enabled() {
+		if !on && gpuTier.Enabled() {
 			t.Error("setGPU(false) left the tier on")
 		}
 		if err := k.err(); err != nil {
@@ -83,7 +82,7 @@ func TestTheGPUSwitchRebuildsAChartThatPaints(t *testing.T) {
 		if s.painted == 0 {
 			t.Errorf("after setGPU(%v): nothing was painted", on)
 		}
-		t.Logf("GPU %-5v  enabled %-5v  draw %s", on, gpu.Enabled(), ms(s.draw.last))
+		t.Logf("GPU %-5v  enabled %-5v  draw %s", on, gpuTier.Enabled(), ms(s.draw.last))
 	}
 }
 

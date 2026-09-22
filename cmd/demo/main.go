@@ -53,7 +53,6 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
-	"github.com/timzifer/fynefigure/gpu"
 )
 
 func main() {
@@ -73,9 +72,9 @@ func main() {
 	// The tier is given back on the way out, which is gg's advice for the
 	// device it holds. The panel's switch uses Disable and Enable instead,
 	// which keep it.
-	defer gpu.Close()
+	defer gpuTier.Close()
 	if *cpu {
-		gpu.Disable()
+		gpuTier.Disable()
 	}
 
 	a := app.New()

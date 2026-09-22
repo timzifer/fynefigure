@@ -7,7 +7,6 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
-	"github.com/timzifer/fynefigure/gpu"
 )
 
 const hint = "Hover the chart to read it. Drag to pan, turn the wheel to zoom, double click to go back."
@@ -185,9 +184,9 @@ func (k *kitchen) setGPU(on bool) bool {
 	k.teardown()
 	ok := true
 	if on {
-		ok = gpu.Enable()
+		ok = gpuTier.Enable()
 	} else {
-		gpu.Disable()
+		gpuTier.Disable()
 	}
 	k.rebuild()
 	return ok

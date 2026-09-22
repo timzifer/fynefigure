@@ -22,8 +22,17 @@
 
 package main
 
-import (
-	// The blank import is the whole opt-in: the tier registers gg's
-	// accelerator from its init, and every rasterizer made afterwards uses it.
-	_ "github.com/timzifer/fynefigure/gpu"
-)
+// Importing the tier is the whole opt-in: it registers gg's accelerator from
+// its init, and every rasterizer made afterwards uses it.
+import "github.com/timzifer/fynefigure/gpu"
+
+// gpuTier is the tier as the demo reaches it, and the only place the demo
+// names the gpu package: a file anywhere else that imported it would put the
+// tier back into the Linux binary. See gpu_linux.go for what Linux gets.
+var gpuTier = tier{
+	Enabled:   gpu.Enabled,
+	Available: gpu.Available,
+	Enable:    gpu.Enable,
+	Disable:   gpu.Disable,
+	Close:     gpu.Close,
+}

@@ -3,6 +3,7 @@ package chart
 import (
 	"image"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -10,8 +11,9 @@ import (
 	"github.com/timzifer/figure"
 	"github.com/timzifer/figure/data"
 	"github.com/timzifer/figure/scale"
-	fynefigure "github.com/timzifer/fyne_figure"
-	"github.com/timzifer/fyne_figure/internal/look"
+	figuretheme "github.com/timzifer/figure/theme"
+	"github.com/timzifer/fynefigure"
+	"github.com/timzifer/fynefigure/internal/look"
 )
 
 // Chart is a figure plot as a Fyne widget.
@@ -94,6 +96,9 @@ type Chart struct {
 	// ptr is the layer that takes the pointer. It is always in the widget's
 	// tree and hidden unless the chart is [Interactive]; see input.go.
 	ptr *pointer
+	// roll is the layer that takes the wheel. It is apart from ptr so that it
+	// can be hidden alone — see [PanZoom].
+	roll *wheel
 
 	// The overlay layer. overlay is what a caller installed and brush is the
 	// rubber band of a [DragMode] drag; ov composes the two and is what figure
@@ -119,6 +124,12 @@ type Chart struct {
 	// release took, so the release owes it a frame. See [Chart.up].
 	selDirty bool
 
+	// queued says a frame asked for by Redraw or Refresh is waiting for its
+	// turn on Fyne's goroutine. It is atomic rather than under lock because
+	// Redraw may come from anywhere, including from inside a handler that
+	// holds the lock. See [Chart.schedule].
+	queued atomic.Bool
+
 	stream *data.Stream
 	stopFn func()
 
@@ -131,11 +142,20 @@ type Chart struct {
 	// change that touched neither is not a rebuild.
 	themed look.State
 
+	// authored is the theme the plot came with, read before the chart first
+	// restyles it. Fyne's colours are laid over this rather than replacing it
+	// — see [look.State.Over] — and it has to be read once, up front, because
+	// every restyle after the first writes the plot's theme.
+	authored figuretheme.Theme
+
 	// hooked records that the plot carries this chart's event handlers. They
 	// belong to the plot rather than to the chart, so they outlive a chart
 	// rebuilt for a new typeface and must not be added twice.
 	hooked  bool
 	renderr error
+
+	// onFrame is handed to every target the chart draws into. See OnFrame.
+	onFrame func(fynefigure.Frame)
 }
 
 // A chart is a widget and nothing else. The pointer interfaces are its
@@ -148,7 +168,7 @@ var _ fyne.Widget = (*Chart)(nil)
 // Nothing is rasterized until the widget is laid out, so a chart built and
 // never shown has taken no memory beyond the plot itself.
 func New(p *figure.Plot, opts ...Option) *Chart {
-	c := &Chart{plot: p, cfg: defaults(), dpr: 1}
+	c := &Chart{plot: p, cfg: defaults(), dpr: 1, authored: p.Theme()}
 	for _, o := range opts {
 		o(&c.cfg)
 	}
@@ -161,6 +181,7 @@ func New(p *figure.Plot, opts ...Option) *Chart {
 		c.brush = &figure.Brush{}
 	}
 	c.ptr = newPointer(c, c.cfg.interactive)
+	c.roll = newWheel(c, c.zooms())
 	c.ExtendBaseWidget(c)
 	return c
 }
@@ -193,13 +214,85 @@ func (c *Chart) Err() error { return c.renderr }
 // that already runs on Fyne's goroutine.
 func (c *Chart) Refresh() { c.BaseWidget.Refresh() }
 
+// Show shows a chart that was hidden.
+//
+// It is BaseWidget.Show with the repaint that one leaves out. BaseWidget.Show
+// refreshes the widget and nothing else, and a refresh reaches the screen
+// through the canvas Fyne has on record for the object — which it records only
+// for objects it has painted. A chart that starts hidden has never been
+// painted, so showing it marked no window dirty: it was neither laid out nor
+// drawn, and its tooltips with it, until something else on the window
+// repainted — a scroll, a label changing — and it appeared then.
+func (c *Chart) Show() {
+	if c.Visible() {
+		return
+	}
+	c.BaseWidget.Show()
+	repaint(c, c)
+}
+
+// repaint asks for obj to be painted again on the canvas anchor is on.
+//
+// canvas.Refresh(obj) would look obj up in Fyne's canvas cache, which knows
+// only what has been painted, so it drops the refresh of an object on its way
+// onto the screen — a tooltip being shown for the first time, a chart that
+// started hidden. The anchor is the object that is on screen, or about to be.
+// When even that has never been painted there is no canvas to ask, and every
+// window is asked instead: a window the chart is not on repaints once for
+// nothing, and the one it is on lays it out and draws it.
+func repaint(anchor, obj fyne.CanvasObject) {
+	app := fyne.CurrentApp()
+	if app == nil {
+		return
+	}
+	drv := app.Driver()
+	if drv == nil {
+		return
+	}
+	if cv := drv.CanvasForObject(anchor); cv != nil {
+		cv.Refresh(obj)
+		return
+	}
+	for _, w := range drv.AllWindows() {
+		if cv := w.Canvas(); cv != nil {
+			cv.Refresh(obj)
+		}
+	}
+}
+
 // Redraw asks for a frame from anywhere.
 //
 // It is [Chart.Refresh] for a goroutine of your own: a producer appending to a
 // stream, a ticker, a network read. The frame is drawn on Fyne's goroutine in
 // its turn, which is what keeps the rasterizer and the painter off each
 // other's pixels.
-func (c *Chart) Redraw() { fyne.Do(c.locked(c.draw)) }
+//
+// Asking again before that turn has come asks for the same frame: however
+// many times a chart is redrawn and refreshed in between, it is rasterized
+// once. A chart that is hidden is not rasterized at all; showing it refreshes
+// it, which draws what it missed.
+func (c *Chart) Redraw() { c.schedule() }
+
+// schedule queues a frame on Fyne's goroutine unless one is queued already.
+//
+// It must not be called with the lock held: under the test driver fyne.Do
+// runs the frame where it is, and the frame takes the lock.
+func (c *Chart) schedule() {
+	if c.queued.CompareAndSwap(false, true) {
+		fyne.Do(c.drawQueued)
+	}
+}
+
+// drawQueued draws the frame schedule queued.
+func (c *Chart) drawQueued() {
+	c.queued.Store(false)
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	if !c.Visible() {
+		return
+	}
+	c.draw()
+}
 
 // locked wraps an operation so that it holds the chart while it runs. It is
 // what a timer or another goroutine posts, since those do not arrive on the
@@ -245,6 +338,26 @@ func (c *Chart) Autoscale() error {
 	c.present()
 	c.viewChanged()
 	return nil
+}
+
+// ResetView releases every zoom and pan like [Chart.Autoscale], but draws in
+// its turn rather than now, and tells nobody.
+//
+// It is for a caller that sets the view itself straight after — charts fitted
+// to a common range release their old zoom first, so a stale one does not hold
+// against the new range. Autoscale would paint the released view for nothing
+// and report it to [Chart.OnViewChange] as if the reader had moved.
+//
+// Until the frame is drawn the axes have no domain of their own: read the view
+// after setting one, not after releasing it.
+func (c *Chart) ResetView() {
+	c.lock.Lock()
+	if c.live != nil {
+		c.steered = false
+		c.live.ResetView()
+	}
+	c.lock.Unlock()
+	c.schedule()
 }
 
 // Close releases the chart's pixels and stops anything animating it.
@@ -298,7 +411,7 @@ func (c *Chart) CreateRenderer() fyne.WidgetRenderer {
 	c.ExtendBaseWidget(c)
 	c.ensureTarget()
 	c.tip = newTooltip(c)
-	objects := append([]fyne.CanvasObject{c.target.Object(), c.ptr}, c.tip.objects()...)
+	objects := append([]fyne.CanvasObject{c.target.Object(), c.roll, c.ptr}, c.tip.objects()...)
 	return &renderer{c: c, objects: objects}
 }
 
@@ -328,11 +441,28 @@ func (c *Chart) resize(size fyne.Size) {
 	}
 
 	if w != c.w || h != c.h {
-		if err := c.target.Render(func() error { return c.live.Resize(w, h) }); err != nil {
+		// SetSize rather than Resize: Resize paints a frame, and the draw
+		// below paints another one over it.
+		if err := c.target.Render(func() error { return c.live.SetSize(w, h) }); err != nil {
 			c.renderr = err
 			return
 		}
 		c.w, c.h = w, h
+		// What the painter asked for was asked of the old size. Divided by
+		// the new one it reads as a device pixel ratio that has nothing to do
+		// with the display — after a jump as large as a maximize, a fraction
+		// of the real one, which rasterizes the chart at about the pixel count
+		// it had before and stretches that.
+		c.mu.Lock()
+		c.painterPx = image.Point{}
+		c.mu.Unlock()
+	}
+	// A hidden chart takes its size and nothing else. Fyne lays out what is
+	// hidden as well — a stack of views switched by Hide gives every one of
+	// them the size — and a frame nobody can see costs the same as one on
+	// screen. Showing the chart refreshes it, and that draws.
+	if !c.Visible() {
+		return
 	}
 	c.checkScale()
 	c.draw()
@@ -351,7 +481,23 @@ func (c *Chart) ensureTarget() {
 	}
 	c.target = fynefigure.New(opts...)
 	c.target.OnGeometry(c.painterGeometry)
+	c.target.OnFrame(c.onFrame)
 	c.themed = c.themeStateNow()
+}
+
+// OnFrame registers a callback told what every frame of this chart cost —
+// resize, redraw, stream, pointer — including the calls that painted nothing.
+// See [fynefigure.Target.OnFrame] for what it may do: it runs with the surface
+// held and must only record.
+//
+// It survives the chart being closed and shown again, which makes a new target.
+func (c *Chart) OnFrame(fn func(fynefigure.Frame)) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	c.onFrame = fn
+	if c.target != nil {
+		c.target.OnFrame(fn)
+	}
 }
 
 // painterGeometry is called from Fyne's painter when it is about to draw the
@@ -517,7 +663,9 @@ func (c *Chart) follows() bool {
 // shows the view the reader dragged to and the next frame snaps it back to the
 // data. Ignoring the gesture is the honest version of what would happen
 // anyway, without the flicker.
-func (c *Chart) steers() bool { return !c.follows() || c.cfg.pause }
+//
+// It is not, either, on a chart that was told [PanZoom] false.
+func (c *Chart) steers() bool { return !c.cfg.fixed && (!c.follows() || c.cfg.pause) }
 
 // tracksRows reports whether the chart should record which source row is
 // behind each mark.

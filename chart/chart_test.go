@@ -14,7 +14,7 @@ import (
 	"github.com/timzifer/figure/data"
 	"github.com/timzifer/figure/geom"
 	"github.com/timzifer/figure/scale"
-	"github.com/timzifer/fyne_figure/chart"
+	"github.com/timzifer/fynefigure/chart"
 )
 
 // What is asserted here is what figure reports, not what the chart looks
@@ -269,7 +269,7 @@ func TestAChartThatWasNeverLaidOutDoesNothing(t *testing.T) {
 	}
 	chart.PointerOf(c).MouseOut()
 	chart.PointerOf(c).DoubleTapped(&fyne.PointEvent{})
-	chart.PointerOf(c).Scrolled(&fyne.ScrollEvent{Scrolled: fyne.NewDelta(0, 4)})
+	chart.WheelOf(c).Scrolled(&fyne.ScrollEvent{Scrolled: fyne.NewDelta(0, 4)})
 	chart.PointerOf(c).DragEnd()
 
 	if err := c.Close(); err != nil {

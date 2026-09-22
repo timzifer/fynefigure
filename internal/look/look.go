@@ -66,6 +66,21 @@ func (s State) Theme() figuretheme.Theme {
 	return base.With(opts...)
 }
 
+// Over is [State.Theme] laid over the theme a chart's author chose. The page
+// colour, the ink and the text size are Fyne's; what the author decided the
+// chart shows is the author's — which grid lines, axis lines and ticks, how
+// many ticks, and the redundant encoding. A pie built with its furniture off
+// must not grow axes because the application it sits in has a colour.
+func (s State) Over(authored figuretheme.Theme) figuretheme.Theme {
+	th := s.Theme()
+	th.ShowGridX, th.ShowGridY = authored.ShowGridX, authored.ShowGridY
+	th.ShowAxisLineX, th.ShowAxisLineY = authored.ShowAxisLineX, authored.ShowAxisLineY
+	th.ShowTicksX, th.ShowTicksY = authored.ShowTicksX, authored.ShowTicksY
+	th.TickCountHintX, th.TickCountHintY = authored.TickCountHintX, authored.TickCountHintY
+	th.SeriesDashes, th.SeriesMarkers = authored.SeriesDashes, authored.SeriesMarkers
+	return th
+}
+
 // Dark reports whether a background wants a dark chart. The weights are the
 // sRGB luma ones and the threshold is the middle.
 func Dark(c color.RGBA) bool {

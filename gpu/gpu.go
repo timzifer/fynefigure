@@ -27,8 +27,8 @@
 // passed anywhere:
 //
 //	import (
-//	    "github.com/timzifer/fyne_figure/chart"
-//	    _ "github.com/timzifer/fyne_figure/gpu" // opt into the GPU tier
+//	    "github.com/timzifer/fynefigure/chart"
+//	    _ "github.com/timzifer/fynefigure/gpu" // opt into the GPU tier
 //	)
 //
 // The import has to happen before the first chart is drawn, which a blank
@@ -80,7 +80,26 @@ import (
 // back otherwise.
 func Enabled() bool { return figuregpu.Enabled() }
 
+// Available reports whether the tier can be had: it is on, or [Disable] set it
+// aside. It is what decides whether a "GPU" switch in a program's UI is worth
+// offering at all.
+func Available() bool { return figuregpu.Available() }
+
+// Disable draws on the CPU from here on and keeps the tier so that [Enable]
+// can bring it back.
+//
+// A chart widget's rasterizer holds GPU state from its first frame, and that
+// state belongs to the device this releases. So close the charts on screen
+// before switching and make them again afterwards — chart.Chart.Close, then
+// chart.New — rather than switching under them.
+func Disable() { figuregpu.Disable() }
+
+// Enable brings back a tier [Disable] set aside, proves it draws, and reports
+// whether it is on. The rule about charts on screen is the one Disable gives.
+func Enable() bool { return figuregpu.Enable() }
+
 // Close releases the GPU device and everything held on it, after which
 // rendering falls back to the CPU rasterizer. It is what a program defers from
-// main; calling it twice, or with no GPU registered, does nothing.
+// main; calling it twice, or with no GPU registered, does nothing. It is final:
+// [Enable] has nothing to bring back afterwards.
 func Close() { figuregpu.Close() }

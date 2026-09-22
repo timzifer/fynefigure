@@ -1,4 +1,4 @@
-module github.com/timzifer/fyne_figure
+module github.com/timzifer/fynefigure
 
 go 1.25.0
 
@@ -7,8 +7,8 @@ go 1.25.0
 // one of the rasterizer, and says which.
 require (
 	fyne.io/fyne/v2 v2.7.3
-	github.com/timzifer/figure v0.10.0
-	github.com/timzifer/figure/backend/gg v0.9.0
+	github.com/timzifer/figure v0.14.0
+	github.com/timzifer/figure/backend/gg v0.12.0
 )
 
 require (
@@ -39,4 +39,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/gogpu/gg => github.com/timzifer/gg v0.52.6-figure.3
+replace github.com/gogpu/gg => github.com/timzifer/gg v0.52.6-figure.5

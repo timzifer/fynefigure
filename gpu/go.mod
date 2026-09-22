@@ -1,10 +1,10 @@
-module github.com/timzifer/fyne_figure/gpu
+module github.com/timzifer/fynefigure/gpu
 
 go 1.25.0
 
 // The GPU tier is a module of its own so that importing the widget cannot pull
 // a GPU stack in by accident: a nested module is excluded from its parent's
-// module graph, so github.com/timzifer/fyne_figure keeps its dependencies to
+// module graph, so github.com/timzifer/fynefigure keeps its dependencies to
 // Fyne, figure and figure's raster backend. It is the arrangement figure
 // makes for the same tier one level up — see its docs/adr/0022.
 //
@@ -14,9 +14,9 @@ go 1.25.0
 // before the child could build.
 
 require (
-	github.com/timzifer/figure v0.10.0
-	github.com/timzifer/figure/backend/gg v0.9.0
-	github.com/timzifer/figure/backend/gg/gpu v0.3.0
+	github.com/timzifer/figure v0.14.0
+	github.com/timzifer/figure/backend/gg v0.12.0
+	github.com/timzifer/figure/backend/gg/gpu v0.4.0
 )
 
 require (
@@ -32,4 +32,4 @@ require (
 	golang.org/x/text v0.41.0 // indirect
 )
 
-replace github.com/gogpu/gg => github.com/timzifer/gg v0.52.6-figure.3
+replace github.com/gogpu/gg => github.com/timzifer/gg v0.52.6-figure.5

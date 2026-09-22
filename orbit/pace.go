@@ -19,6 +19,11 @@ import (
 // pace draws the waiting turn now if the last frame has been paid for, and
 // otherwise leaves it for the timer.
 func (c *Chart) pace() {
+	if c.target != nil {
+		// The turn is here now, whether or not it is drawn now: what a reader
+		// waits for is measured from this. See fynefigure.Target.Input.
+		c.target.Input()
+	}
 	if iv := c.interval(); iv == 0 || time.Since(c.lastFrame) >= iv {
 		c.run()
 		return

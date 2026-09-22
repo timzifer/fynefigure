@@ -6,18 +6,17 @@ import (
 	"slices"
 	"time"
 
-	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 	"github.com/timzifer/figure/geom"
 	"github.com/timzifer/figure/palette"
 	"github.com/timzifer/figure/scale"
 	"github.com/timzifer/figure/three"
-	fynefigure "github.com/timzifer/fyne_figure"
-	"github.com/timzifer/fyne_figure/orbit"
+	"github.com/timzifer/fynefigure"
+	"github.com/timzifer/fynefigure/orbit"
 )
 
-// camerasTab is the 3D tab's four cameras as four widgets, with the glue that
+// camerasShow is four cameras on one scene as four widgets, with the glue that
 // made them one figure written out here instead of inside the widget.
 //
 // One orbit widget with four views shares a selection by construction and turns
@@ -37,7 +36,7 @@ import (
 // orbit.Detail(0.5) says how coarse, Chart.OnGesture says when, and
 // Chart.SetCoarse does it. The status line shows the time a frame takes, so
 // the difference can be read off rather than guessed at.
-func camerasTab() fyne.CanvasObject {
+func camerasShow(e env) (*view, error) {
 	labels := []string{"three-quarter", "plan", "front", "side"}
 	cams := []three.Camera{
 		three.Home(),
@@ -46,19 +45,14 @@ func camerasTab() fyne.CanvasObject {
 		three.LookAt(three.Azimuth(-math.Pi/2), three.Elevation(0.02)),
 	}
 
-	status := widget.NewLabel("")
-	g := &glue{labels: labels, homes: cams, last: slices.Clone(cams), turning: -1, status: status}
+	g := &glue{labels: labels, homes: cams, last: slices.Clone(cams), turning: -1, status: e.status}
 	for i, label := range labels {
 		// A scene each: every plot trains its own scales, and nothing about one
 		// widget's drawing reaches into another's.
 		p := three.New(three.Size(440, 240), three.Title(label)).
 			Scene(saddleScene()).
 			Add(three.View{Camera: cams[i]})
-		g.charts = append(g.charts, orbit.New(p,
-			orbit.Interactive(true),
-			orbit.Select(true),
-			orbit.Detail(0.5),
-		))
+		g.charts = append(g.charts, orbit.New(p, e.orbitOpts(orbit.Select(true), orbit.Detail(0.5))...))
 	}
 	for i, c := range g.charts {
 		c.OnCamera(func(_ int, cam three.Camera) { g.turned(i, cam) })
@@ -84,7 +78,7 @@ func camerasTab() fyne.CanvasObject {
 		grid.Add(c)
 	}
 	controls := container.NewHBox(home, clear, together, coarse)
-	return container.NewBorder(nil, container.NewVBox(status, controls), nil, nil, grid)
+	return &view{obj: container.NewBorder(nil, controls, nil, nil, grid), orbits: g.charts}, nil
 }
 
 // glue is everything that makes four widgets one figure. Every method runs on
@@ -110,7 +104,7 @@ type glue struct {
 	frame   time.Time
 	cost    time.Duration
 
-	status *widget.Label
+	status func(string)
 }
 
 // turned passes one widget's turn on to the other three, if they turn
@@ -147,7 +141,7 @@ func (g *glue) picked(from int, sel fynefigure.Selection) {
 		g.idle()
 		return
 	}
-	g.status.SetText(fmt.Sprintf("row %d picked in the %s widget, and marked in all %d",
+	g.status(fmt.Sprintf("row %d picked in the %s widget, and marked in all %d",
 		sel[0].Row, g.labels[from], len(g.charts)))
 }
 
@@ -181,7 +175,7 @@ func (g *glue) timed(from int) {
 			// Smoothed, so that the number can be read while it changes.
 			g.cost = (g.cost*7 + d) / 8
 		}
-		g.status.SetText(fmt.Sprintf("turning the %s widget: %.0f ms a frame",
+		g.status(fmt.Sprintf("turning the %s widget: %.0f ms a frame",
 			g.labels[from], float64(g.cost)/float64(time.Millisecond)))
 	}
 	g.frame = now
@@ -198,7 +192,7 @@ func (g *glue) home() {
 }
 
 func (g *glue) idle() {
-	g.status.SetText("Four widgets, one figure. Drag one to turn it, click a point to mark it in all four.")
+	g.status("Four widgets, one figure. Drag one to turn it, click a point to mark it in all four.")
 }
 
 // saddleScene is the 3D tab's surface as a scene of its own.

@@ -9,7 +9,7 @@ import (
 	"github.com/timzifer/figure/data"
 	"github.com/timzifer/figure/geom"
 	"github.com/timzifer/figure/scale"
-	gputier "github.com/timzifer/fyne_figure/gpu"
+	gputier "github.com/timzifer/fynefigure/gpu"
 )
 
 // Whether the tier took depends on the machine: a runner with no Vulkan, Metal
@@ -23,6 +23,23 @@ import (
 // is behind a build tag for that reason.
 func TestTheTierSaysWhetherItTook(t *testing.T) {
 	t.Logf("GPU tier enabled: %v", gputier.Enabled())
+}
+
+// Disable and Enable are the switch a program's UI offers, and unlike Close
+// they leave the tier as they found it — which is what lets this run beside
+// the benchmarks without them quietly measuring the CPU afterwards.
+func TestDisableAndEnableLeaveTheTierAsTheyFoundIt(t *testing.T) {
+	was := gputier.Enabled()
+	gputier.Disable()
+	if gputier.Enabled() {
+		t.Fatal("the tier is still on after Disable")
+	}
+	if gputier.Available() != was {
+		t.Errorf("Available = %v after Disable, want %v", gputier.Available(), was)
+	}
+	if got := gputier.Enable(); got != was {
+		t.Fatalf("Enable = %v, but the tier was %v before Disable", got, was)
+	}
 }
 
 // The same frames the package next door benchmarks, so that the two tables can

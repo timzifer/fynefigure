@@ -5,7 +5,6 @@ import (
 	"math"
 	"strconv"
 
-	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 	"github.com/timzifer/figure"
@@ -14,9 +13,9 @@ import (
 	"github.com/timzifer/figure/scale"
 	"github.com/timzifer/figure/stat"
 	"github.com/timzifer/figure/three"
-	fynefigure "github.com/timzifer/fyne_figure"
-	"github.com/timzifer/fyne_figure/chart"
-	"github.com/timzifer/fyne_figure/orbit"
+	"github.com/timzifer/fynefigure"
+	"github.com/timzifer/fynefigure/chart"
+	"github.com/timzifer/fynefigure/orbit"
 )
 
 // The field's range, chosen once and used by everything that colours it or
@@ -26,7 +25,7 @@ const (
 	gainHi = 6.0
 )
 
-// contourTab is one field read two ways: a plan to take numbers off, and a
+// contourShow is one field read two ways: a plan to take numbers off, and a
 // shape to see what they are doing. It is figure's examples/contour as a pair
 // of widgets.
 //
@@ -40,7 +39,7 @@ const (
 //   - one key column, so a cell clicked in either chart is ringed in both. The
 //     two charts are drawn from one table here, but the key is what crosses —
 //     the link would work as well from two tables that named their rows alike.
-func contourTab() fyne.CanvasObject {
+func contourShow(e env) (*view, error) {
 	ramp := scale.Sequential(palette.Viridis, scale.ColorDomain(gainLo, gainHi))
 	levels := stat.Levels(gainLo, gainHi, 9)
 	field := gainField()
@@ -66,7 +65,7 @@ func contourTab() fyne.CanvasObject {
 		geom.Contour(field.src, geom.X("bias"), geom.Y("drive"), geom.Z("gain"),
 			geom.Levels(levels...), geom.Color(palette.White), geom.Width(1)),
 	)
-	plan := chart.New(p, chart.Interactive(true), chart.Select(true))
+	plan := chart.New(p, e.chartOpts(chart.Select(true))...)
 
 	sc := three.NewScene(
 		three.XTitle("bias (V)"),
@@ -83,23 +82,22 @@ func contourTab() fyne.CanvasObject {
 		)
 	shape := orbit.New(
 		three.New(three.Size(460, 420), three.Title("Shape")).Scene(sc),
-		orbit.Interactive(true), orbit.Select(true),
+		e.orbitOpts(orbit.Select(true))...,
 	)
 
-	hint := "Click a cell in either chart to ring it in both. Drag the shape to turn it."
-	status := widget.NewLabel(hint)
 	show := func(sel fynefigure.Selection) {
 		if len(sel) == 0 {
-			status.SetText(hint)
+			e.status("")
 			return
 		}
 		b, d, g, ok := field.at(sel[0].Key)
 		if !ok {
-			status.SetText(hint)
+			e.status("")
 			return
 		}
-		status.SetText(fmt.Sprintf("bias %.2f V   drive %.1f dBm   gain %.2f dB", b, d, g))
+		e.status(fmt.Sprintf("bias %.2f V   drive %.1f dBm   gain %.2f dB", b, d, g))
 	}
+	p.On(figure.Hover, e.readout)
 
 	// The link, one line each way. SetSelection reports nothing back, so it
 	// does not loop.
@@ -114,8 +112,11 @@ func contourTab() fyne.CanvasObject {
 	home := widget.NewButton("Home", func() { _ = shape.Home() })
 
 	charts := container.NewGridWithColumns(2, plan, shape)
-	return container.NewBorder(nil,
-		container.NewVBox(status, container.NewHBox(home, clear)), nil, nil, charts)
+	return &view{
+		obj:    container.NewBorder(nil, container.NewHBox(home, clear), nil, nil, charts),
+		flats:  []*chart.Chart{plan},
+		orbits: []*orbit.Chart{shape},
+	}, nil
 }
 
 // field is the sampled gain and the columns it was built from, kept so that a

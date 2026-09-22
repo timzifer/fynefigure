@@ -3,6 +3,7 @@ package fynefigure
 import (
 	"image"
 	"sync"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -45,6 +46,13 @@ type Target struct {
 	// blank stands in before the first frame, because Fyne's painter has no
 	// answer for a raster that generates nothing.
 	blank *image.RGBA
+
+	// frame is told what each call through Render cost. See OnFrame.
+	frame func(Frame)
+
+	// inputAt is when the first pointer event no frame has answered yet
+	// arrived. See Input.
+	inputAt time.Time
 }
 
 var _ ir.Target = (*Target)(nil)
@@ -102,7 +110,93 @@ func (t *Target) Close() error {
 func (t *Target) Render(fn func() error) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	return fn()
+	if t.frame == nil {
+		return fn()
+	}
+
+	back := t.back
+	var before uint64
+	if back != nil {
+		before = back.frames
+	}
+	start := time.Now()
+	err := fn()
+	f := Frame{At: time.Now()}
+	f.Cost = f.At.Sub(start)
+	// A frame figure found identical to the last one paints nothing, and a
+	// counter that was replaced underneath — a first Open — painted into a
+	// buffer that did not exist before, which is new either way.
+	f.Painted = t.back != nil && (t.back != back || t.back.frames != before)
+	if f.Painted {
+		f.W, f.H, f.DPR = t.surf.Size()
+		if !t.inputAt.IsZero() {
+			f.Latency = f.At.Sub(t.inputAt)
+			t.inputAt = time.Time{}
+		}
+	} else if !t.inputAt.IsZero() && !t.inputAt.After(start) {
+		// Not after rather than before: on a clock as coarse as Windows' the
+		// event and the call that handles it can read the same instant.
+		// The event was handled and needed no frame — a hover over a chart
+		// nobody is zooming — so it is answered, and the next frame painted
+		// for some other reason must not be charged with the wait.
+		t.inputAt = time.Time{}
+	}
+	t.frame(f)
+	return err
+}
+
+// Input marks that a pointer event has arrived for the chart drawn here.
+//
+// The next frame painted after it reports in [Frame.Latency] how long after
+// the event it was finished: the wait a paced widget imposed on it as well as
+// the drawing, which is the roundtrip a reader feels. A call through Render
+// that handles the event and paints nothing answers it too, with no frame to
+// report. Only the first event of a run is kept — the frame that answers it
+// answers every event that arrived after it.
+//
+// It must not be called from inside Render. It costs nothing when no OnFrame
+// callback is registered, beyond the lock.
+func (t *Target) Input() {
+	t.mu.Lock()
+	if t.frame != nil && t.inputAt.IsZero() {
+		t.inputAt = time.Now()
+	}
+	t.mu.Unlock()
+}
+
+// Frame is what one call through [Target.Render] cost.
+type Frame struct {
+	// At is when it finished.
+	At time.Time
+	// Cost is how long it held the surface: the pointer handling, hit test and
+	// layout the call did as well as the rasterizing, because that is the time
+	// the chart was not available for the next event.
+	Cost time.Duration
+	// Painted is whether it put a new frame in the surface. Most pointer moves
+	// over a chart nobody is zooming do not: figure paints nothing for a frame
+	// identical to the last.
+	Painted bool
+	// Latency is how long after the pointer event it answers the frame was
+	// finished, pacing included — zero for a frame that answers none. See
+	// [Target.Input].
+	Latency time.Duration
+	// W and H are the frame's logical size and DPR the ratio its buffer is
+	// scaled by. They are set only on a painted frame.
+	W, H int
+	DPR  float64
+}
+
+// OnFrame registers a callback for every call through [Target.Render], painted
+// or not. It is how a caller measures what a chart costs to draw without
+// wrapping every path that draws it.
+//
+// It is called with the surface held, on whichever goroutine drew — Fyne's,
+// for a widget — so a handler must only record: calling back into the target
+// is a deadlock, and anything slow is time every frame pays. Pass nil to stop.
+func (t *Target) OnFrame(fn func(Frame)) {
+	t.mu.Lock()
+	t.frame = fn
+	t.mu.Unlock()
 }
 
 // SetFont replaces the typeface the rasterizer draws labels with, keeping the

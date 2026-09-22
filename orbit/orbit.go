@@ -9,8 +9,8 @@ import (
 	"fyne.io/fyne/v2/widget"
 	"github.com/timzifer/figure/interact"
 	"github.com/timzifer/figure/three"
-	fynefigure "github.com/timzifer/fyne_figure"
-	"github.com/timzifer/fyne_figure/internal/look"
+	"github.com/timzifer/fynefigure"
+	"github.com/timzifer/fynefigure/internal/look"
 )
 
 // Which views a gesture turns: one view by its index, or one of these.
@@ -109,7 +109,24 @@ type Chart struct {
 	onGesture  func(active bool)
 	wheelTimer *time.Timer
 
+	// onFrame is handed to every target the chart draws into. See OnFrame.
+	onFrame func(fynefigure.Frame)
+
 	renderr error
+}
+
+// OnFrame registers a callback told what every frame of this chart cost,
+// including the calls that painted nothing. See [fynefigure.Target.OnFrame]
+// for what it may do: it runs with the surface held and must only record.
+//
+// It survives the chart being closed and shown again, which makes a new target.
+func (c *Chart) OnFrame(fn func(fynefigure.Frame)) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	c.onFrame = fn
+	if c.target != nil {
+		c.target.OnFrame(fn)
+	}
 }
 
 // A chart is a widget and nothing else. The pointer interfaces are its
@@ -325,6 +342,14 @@ func (c *Chart) resize(size fyne.Size) {
 			return
 		}
 		c.w, c.h = w, h
+		// What the painter asked for was asked of the old size. Divided by
+		// the new one it reads as a device pixel ratio that has nothing to do
+		// with the display — after a jump as large as a maximize, a fraction
+		// of the real one, which rasterizes the chart at about the pixel count
+		// it had before and stretches that.
+		c.mu.Lock()
+		c.painterPx = image.Point{}
+		c.mu.Unlock()
 	}
 	c.checkScale()
 	c.draw()
@@ -337,6 +362,7 @@ func (c *Chart) ensureTarget() {
 	}
 	c.target = fynefigure.New()
 	c.target.OnGeometry(c.painterGeometry)
+	c.target.OnFrame(c.onFrame)
 }
 
 // painterGeometry is called from Fyne's painter when it is about to draw the

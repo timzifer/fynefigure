@@ -7,9 +7,10 @@ import (
 	"time"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/test"
 	"github.com/timzifer/figure/three"
-	"github.com/timzifer/fyne_figure/orbit"
+	"github.com/timzifer/fynefigure/orbit"
 )
 
 // A coarse chart rasterizes a fraction of the pixels and a sharp one all of
@@ -33,6 +34,20 @@ func TestACoarseChartDrawsFewerPixelsUntilItIsSharpenedAgain(t *testing.T) {
 	c.SetCoarse(false)
 	if got := c.Target().Image().Bounds().Dx(); got != full {
 		t.Errorf("after sharpening the frame is %d pixels wide, want %d again", got, full)
+	}
+}
+
+// A pixel the painter asked for at the old size is not a device pixel ratio
+// at the new one: a chart grown as far as a maximize rasterizes at its new
+// size, not at the pixel count it had before.
+func TestAResizeForgetsWhatThePainterAskedOfTheOldSize(t *testing.T) {
+	c, _ := shown(t, fyne.NewSize(500, 300), plot())
+
+	c.Target().Object().(*canvas.Raster).Generator(501, 300)
+
+	c.Resize(fyne.NewSize(1500, 900))
+	if got := c.Target().Image().Bounds(); got.Dx() != 1500 || got.Dy() != 900 {
+		t.Errorf("after growing to 1500x900 the chart rasterizes %dx%d", got.Dx(), got.Dy())
 	}
 }
 
@@ -78,6 +93,9 @@ func TestOnGestureReportsADragOnceEachWay(t *testing.T) {
 
 // A wheel has no end to report, so it is over once it has been still.
 func TestOnGestureEndsAWheelOnceItIsStill(t *testing.T) {
+	// Longer than a notch takes to draw under the race detector, which is
+	// what the two notches below must fit inside.
+	orbit.WheelSettles(t, time.Second)
 	c, win := shown(t, fyne.NewSize(500, 300), plot())
 	var mu sync.Mutex
 	var got []bool
@@ -98,7 +116,7 @@ func TestOnGestureEndsAWheelOnceItIsStill(t *testing.T) {
 		t.Fatalf("two notches of the wheel made OnGesture say %v, want [true]", s)
 	}
 
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) && len(said()) < 2 {
 		time.Sleep(10 * time.Millisecond)
 	}

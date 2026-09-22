@@ -7,13 +7,14 @@ import (
 
 	"math"
 	"testing"
+	"time"
 
 	"fyne.io/fyne/v2/canvas"
 
 	"github.com/timzifer/figure"
 	ggbackend "github.com/timzifer/figure/backend/gg"
 	"github.com/timzifer/figure/geom"
-	fynefigure "github.com/timzifer/fyne_figure"
+	"github.com/timzifer/fynefigure"
 )
 
 // The claim this package rests on is that a chart in a Fyne widget is the
@@ -73,6 +74,92 @@ func TestTheFrameFollowsTheDevicePixelRatio(t *testing.T) {
 	}
 	if b := target.Image().Bounds(); b.Dx() != 800 || b.Dy() != 500 {
 		t.Errorf("the buffer is %v, want 800x500 device pixels", b)
+	}
+}
+
+// OnFrame is how a program measures a chart without wrapping every path that
+// draws it, so it has to hear about every call through Render and tell a frame
+// that painted from one figure found identical to the last.
+func TestOnFrameReportsWhatEachDrawCostAndWhetherItPainted(t *testing.T) {
+	target := fynefigure.New()
+	var frames []fynefigure.Frame
+	target.OnFrame(func(f fynefigure.Frame) { frames = append(frames, f) })
+
+	live, err := plot().Live(target)
+	if err != nil {
+		t.Fatalf("opening the chart: %v", err)
+	}
+	defer live.Close()
+
+	for range 2 {
+		if err := target.Render(live.Draw); err != nil {
+			t.Fatalf("drawing: %v", err)
+		}
+	}
+	if len(frames) != 2 {
+		t.Fatalf("OnFrame was called %d times for two Renders", len(frames))
+	}
+	first, second := frames[0], frames[1]
+	if !first.Painted || first.Cost <= 0 || first.At.IsZero() {
+		t.Errorf("the first frame reports %+v, want painted with a cost and a time", first)
+	}
+	if w, h, _ := target.Size(); first.W != w || first.H != h {
+		t.Errorf("the first frame reports %dx%d, the target is %dx%d", first.W, first.H, w, h)
+	}
+	if second.Painted {
+		t.Error("a frame identical to the last is reported as painted")
+	}
+
+	target.OnFrame(nil)
+	if err := target.Render(live.Draw); err != nil {
+		t.Fatalf("drawing: %v", err)
+	}
+	if len(frames) != 2 {
+		t.Error("OnFrame(nil) did not stop the reports")
+	}
+}
+
+// Input is what turns a frame's cost into the roundtrip a reader feels: the
+// first painted frame after an event reports how long after it it finished,
+// and an event answered without a frame is not charged to the next one.
+func TestAFrameReportsHowLongTheInputItAnswersWaited(t *testing.T) {
+	target := fynefigure.New()
+	var frames []fynefigure.Frame
+	target.OnFrame(func(f fynefigure.Frame) { frames = append(frames, f) })
+
+	live, err := plot().Live(target)
+	if err != nil {
+		t.Fatalf("opening the chart: %v", err)
+	}
+	defer live.Close()
+	if err := target.Render(live.Draw); err != nil {
+		t.Fatalf("drawing: %v", err)
+	}
+	if frames[0].Latency != 0 {
+		t.Errorf("a frame no input asked for reports a latency of %v", frames[0].Latency)
+	}
+
+	// An event, a wait the way a paced widget would impose one, then a frame.
+	target.Input()
+	time.Sleep(5 * time.Millisecond)
+	if err := target.Render(func() error { return live.Resize(300, 200) }); err != nil {
+		t.Fatalf("resizing: %v", err)
+	}
+	if f := frames[len(frames)-1]; !f.Painted || f.Latency < 5*time.Millisecond {
+		t.Errorf("the frame answering the input reports %+v, want painted with at least 5ms latency", f)
+	}
+
+	// An event answered by a call that painted nothing: the next frame, drawn
+	// for some other reason, must not be charged with it.
+	target.Input()
+	if err := target.Render(live.Draw); err != nil {
+		t.Fatalf("drawing: %v", err)
+	}
+	if err := target.Render(func() error { return live.Resize(320, 200) }); err != nil {
+		t.Fatalf("resizing: %v", err)
+	}
+	if f := frames[len(frames)-1]; f.Latency != 0 {
+		t.Errorf("a frame drawn after the input was answered reports a latency of %v", f.Latency)
 	}
 }
 

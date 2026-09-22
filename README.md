@@ -1,7 +1,7 @@
-# fyne-figure
+# fynefigure
 
-[![CI](https://github.com/timzifer/fyne_figure/actions/workflows/ci.yml/badge.svg)](https://github.com/timzifer/fyne_figure/actions/workflows/ci.yml)
-[![Go Reference](https://pkg.go.dev/badge/github.com/timzifer/fyne_figure.svg)](https://pkg.go.dev/github.com/timzifer/fyne_figure)
+[![CI](https://github.com/timzifer/fynefigure/actions/workflows/ci.yml/badge.svg)](https://github.com/timzifer/fynefigure/actions/workflows/ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/timzifer/fynefigure.svg)](https://pkg.go.dev/github.com/timzifer/fynefigure)
 [![MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 [figure](https://github.com/timzifer/figure) charts in a [Fyne](https://fyne.io) app.
@@ -23,9 +23,9 @@ with it instead of taking the wheel. `c.SetInteractive(true)` lets a reader at
 it later, and `false` takes the pointer back.
 
 ```sh
-go get github.com/timzifer/fyne_figure
-git clone https://github.com/timzifer/fyne-figure
-cd fyne-figure/cmd/demo && go run .
+go get github.com/timzifer/fynefigure
+git clone https://github.com/timzifer/fynefigure
+cd fynefigure/cmd/demo && go run .
 ```
 
 The demo is a module of its own — it opts into the GPU tier, which is nested
@@ -199,6 +199,13 @@ The producer appends from wherever it likes; the chart freezes a snapshot
 between frames, so it never reads a stream half-written. From a goroutine of
 your own, ask for a frame with `c.Redraw()` — every other method here belongs
 to Fyne's goroutine.
+
+`Redraw` and `Refresh` queue the frame rather than draw it, and a chart asked
+again before its turn draws once: a container refreshing its children and new
+data arriving in the same turn cost one frame. A hidden chart draws nothing —
+Fyne lays out hidden widgets too — and catches up when it is shown. To release
+a zoom only to set a view straight after, `c.ResetView()` does what `Autoscale`
+does without painting the released view or reporting it.
 
 A sliding window needs two things a static chart does not, and `chart.Follow`
 does both for the x axis by default.
@@ -389,7 +396,7 @@ So an interactive chart runs at twenty to thirty frames a second, and a hover
 costs nothing because it paints nothing. That is the rasterizer's price, and it
 is why the pacing above exists rather than being a nicety.
 
-There is a GPU tier, in `fyne-figure/gpu`, and it is worth having:
+There is a GPU tier, in `fynefigure/gpu`, and it is worth having:
 
 | | CPU | GPU |
 |---|---|---|
@@ -399,7 +406,7 @@ There is a GPU tier, in `fyne-figure/gpu`, and it is worth having:
 One blank import turns it on:
 
 ```go
-import _ "github.com/timzifer/fyne_figure/gpu"
+import _ "github.com/timzifer/fynefigure/gpu"
 ```
 
 A machine with no usable device falls back to the CPU rasterizer, and

@@ -34,6 +34,11 @@ func doOnFyne(fn func()) { fyne.Do(fn) }
 // pace runs fn now if the last frame has been paid for, and otherwise keeps it
 // for later. It reports whether it ran.
 func (c *Chart) pace(fn func()) bool {
+	if c.target != nil {
+		// The event is here now, whether or not it is drawn now: what a reader
+		// waits for is measured from this. See fynefigure.Target.Input.
+		c.target.Input()
+	}
 	if iv := c.interval(); iv == 0 || time.Since(c.lastFrame) >= iv {
 		c.run(fn)
 		return true

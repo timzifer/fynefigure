@@ -3,7 +3,7 @@ package chart
 import (
 	"fyne.io/fyne/v2"
 	"github.com/timzifer/figure"
-	"github.com/timzifer/fyne_figure/internal/look"
+	"github.com/timzifer/fynefigure/internal/look"
 )
 
 // syncTheme follows Fyne's own colours and typeface, and rebuilds the chart
@@ -65,7 +65,8 @@ func (c *Chart) refont() {
 }
 
 // applyTheme puts figure's own light or dark theme on the plot, in the page
-// colour and at the text size Fyne asks for — see [look.State.Theme].
+// colour and at the text size Fyne asks for, keeping what the plot's author
+// chose to show — see [look.State.Over].
 //
 // It is figure.Theme applied to the plot directly rather than at
 // construction: a Plot Option is an ordinary function, and a chart whose
@@ -74,7 +75,7 @@ func (c *Chart) applyTheme() {
 	if !c.cfg.theme {
 		return
 	}
-	figure.Theme(c.themeStateNow().Theme())(c.plot)
+	figure.Theme(c.themeStateNow().Over(c.authored))(c.plot)
 }
 
 // themeStateNow reads what Fyne currently asks for.

@@ -8,7 +8,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/test"
-	"github.com/timzifer/fyne_figure/chart"
+	"github.com/timzifer/fynefigure/chart"
 )
 
 // A chart being dragged is rasterized coarser than the screen and stretched by
@@ -101,6 +101,22 @@ func TestACoarseFrameIsNotMistakenForTheDisplay(t *testing.T) {
 	chart.PointerOf(c).DragEnd()
 	if after := buffer(t, c); after.X != 500 {
 		t.Errorf("after the drag the chart rasterizes %v, want the full 500 wide", after)
+	}
+}
+
+// A painter that asked for a pixel or so more than was rasterized — rounding,
+// at any fractional size — asked it of the size the chart had then. A resize
+// as large as a maximize must not divide that by the new size and rasterize
+// the bigger chart at the pixel count of the smaller one.
+func TestAResizeForgetsWhatThePainterAskedOfTheOldSize(t *testing.T) {
+	c, _ := shown(t, fyne.NewSize(500, 300))
+
+	raster := c.Target().Object().(*canvas.Raster)
+	raster.Generator(501, 300)
+
+	c.Resize(fyne.NewSize(1500, 900))
+	if got := buffer(t, c); got.X != 1500 || got.Y != 900 {
+		t.Errorf("after growing to 1500x900 the chart rasterizes %v", got)
 	}
 }
 

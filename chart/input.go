@@ -23,6 +23,11 @@ import (
 // the wheel from the scroll container around it even while ignoring every
 // notch. A hidden layer is not found at all, and the event goes to whatever is
 // behind it.
+//
+// The wheel has a layer of its own for the same reason. Fyne looks for a
+// Scrollable separately from a Mouseable, so a chart that takes hover and
+// clicks but must not zoom — [PanZoom] false — hides the wheel layer and
+// keeps the pointer: the wheel then scrolls the list the chart stands in.
 
 // pointer is the layer that takes the pointer for a chart.
 type pointer struct {
@@ -37,7 +42,6 @@ type pointer struct {
 var (
 	_ fyne.Widget         = (*pointer)(nil)
 	_ fyne.Draggable      = (*pointer)(nil)
-	_ fyne.Scrollable     = (*pointer)(nil)
 	_ fyne.DoubleTappable = (*pointer)(nil)
 	_ desktop.Hoverable   = (*pointer)(nil)
 	_ desktop.Mouseable   = (*pointer)(nil)
@@ -57,6 +61,52 @@ func (p *pointer) CreateRenderer() fyne.WidgetRenderer {
 	return widget.NewSimpleRenderer(container.NewWithoutLayout())
 }
 
+// wheel is the layer that takes the scroll wheel for a chart. It is shown only
+// while the wheel may zoom — see [Chart.zooms] — and hidden otherwise, so
+// that the wheel reaches whatever is behind the chart.
+type wheel struct {
+	widget.BaseWidget
+	c *Chart
+}
+
+var (
+	_ fyne.Widget     = (*wheel)(nil)
+	_ fyne.Scrollable = (*wheel)(nil)
+)
+
+func newWheel(c *Chart, on bool) *wheel {
+	w := &wheel{c: c}
+	w.Hidden = !on
+	w.ExtendBaseWidget(w)
+	return w
+}
+
+// CreateRenderer is called by Fyne. It is not part of the API.
+func (w *wheel) CreateRenderer() fyne.WidgetRenderer {
+	return widget.NewSimpleRenderer(container.NewWithoutLayout())
+}
+
+// zooms reports whether the wheel layer should be there at all: on an
+// interactive chart whose view a reader may move. The lock is held by the
+// caller.
+func (c *Chart) zooms() bool { return c.cfg.interactive && !c.cfg.fixed }
+
+// showLayers shows or hides the pointer and wheel layers to match the config.
+// It is called outside the lock: showing or hiding a widget refreshes it, and
+// the layers are Fyne's to refresh, not the chart's.
+func showLayers(c *Chart, pointerOn, wheelOn bool) {
+	if pointerOn {
+		c.ptr.Show()
+	} else {
+		c.ptr.Hide()
+	}
+	if wheelOn {
+		c.roll.Show()
+	} else {
+		c.roll.Hide()
+	}
+}
+
 // SetInteractive lets a reader at the chart, or takes the pointer back from
 // them. It is [Interactive] for a chart already on screen.
 //
@@ -71,15 +121,24 @@ func (c *Chart) SetInteractive(on bool) {
 		c.leave()
 		c.tip.hide()
 	}
+	zooms := c.zooms()
 	c.lock.Unlock()
 
-	// Outside the lock: showing or hiding a widget refreshes it, and the layer
-	// is Fyne's to refresh, not the chart's.
-	if on {
-		c.ptr.Show()
-	} else {
-		c.ptr.Hide()
-	}
+	showLayers(c, on, zooms)
+}
+
+// SetPanZoom lets a reader move the view, or stops them. It is [PanZoom] after
+// construction, and leaves the view where it is either way.
+//
+// Off, the wheel is left to whatever is behind the chart — a scroll container
+// scrolls — rather than taken and ignored.
+func (c *Chart) SetPanZoom(on bool) {
+	c.lock.Lock()
+	c.cfg.fixed = !on
+	interactive, zooms := c.cfg.interactive, c.zooms()
+	c.lock.Unlock()
+
+	showLayers(c, interactive, zooms)
 }
 
 // Interactive reports whether a reader can hover, drag, zoom and click the
@@ -266,8 +325,8 @@ func (p *pointer) DragEnd() {
 // Fyne counts a wheel notch in its own units and upwards; figure counts it in
 // the browser's pixels and downwards, where a positive delta pushes the chart
 // away and zooms out. [WheelScale] is the conversion.
-func (p *pointer) Scrolled(ev *fyne.ScrollEvent) {
-	c := p.c
+func (w *wheel) Scrolled(ev *fyne.ScrollEvent) {
+	c := w.c
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -315,7 +374,9 @@ func (p *pointer) DoubleTapped(*fyne.PointEvent) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	if c.in == nil {
+	if c.in == nil || c.cfg.fixed {
+		// A view nobody may move is not put back either: where it stands is
+		// where the program put it. See [PanZoom].
 		return
 	}
 	c.steered = false

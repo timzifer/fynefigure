@@ -6,6 +6,7 @@ import (
 	"image/color"
 	"image/draw"
 	"math"
+	"strconv"
 	"strings"
 
 	"fyne.io/fyne/v2"
@@ -87,9 +88,26 @@ func (s TooltipStyle) over(base TooltipStyle) TooltipStyle {
 // drawn. An empty Text hides the tooltip for that hover.
 //
 // The text may contain newlines, and each line is drawn as its own line.
+//
+// Runs, when there are any, say it instead of Text: each run is a stretch of
+// the label in a face of its own, drawn one after the other, and a newline
+// inside a run breaks the line there. A run's Bold and Italic add to the
+// Style's and never take away from it — a bold tooltip stays bold throughout.
+// The chart fills Text in with what the runs say together, so a content with
+// runs is hidden exactly when a plain one would be: when it says nothing.
 type TooltipContent struct {
 	Text  string
+	Runs  []TooltipRun
 	Style TooltipStyle
+}
+
+// TooltipRun is a stretch of a tooltip's label drawn in a face of its own —
+// the name of what is under the pointer set bold before the numbers that
+// follow it, say. See [TooltipContent].
+type TooltipRun struct {
+	Text   string
+	Bold   bool
+	Italic bool
 }
 
 // Tooltipper builds the tooltip for a hover. It is the extension point for a
@@ -153,9 +171,12 @@ type tooltip struct {
 	drawn bool
 }
 
-// tipKey identifies a rendered tooltip.
+// tipKey identifies a rendered tooltip. faces is where the runs of the text
+// start and in which face, so that the same words set differently are
+// rendered again; see [runFaces].
 type tipKey struct {
 	text  string
+	faces string
 	style TooltipStyle
 	dpr   float64
 }
@@ -256,7 +277,7 @@ func (t *tooltip) show(ev figure.Event) {
 	if dpr <= 0 {
 		dpr = 1
 	}
-	key := tipKey{text: content.Text, style: content.Style, dpr: dpr}
+	key := tipKey{text: content.Text, faces: runFaces(content.Runs), style: content.Style, dpr: dpr}
 	if !t.drawn || key != t.last {
 		if err := t.render(content, dpr); err != nil {
 			t.c.renderr = err
@@ -300,22 +321,26 @@ func (t *tooltip) refresh() { repaint(t.c, t.img) }
 // pixels to the canvas object.
 func (t *tooltip) render(content TooltipContent, dpr float64) error {
 	st := content.Style
-	lines := strings.Split(content.Text, "\n")
-	font := ir.FontRef{Size: float64(st.FontSize), Italic: st.Italic}
-	if st.Bold {
-		font.Weight = 700
-	}
+	lines := tipLines(content)
 
 	m, err := t.measurer(dpr)
 	if err != nil {
 		return err
 	}
+	// Each run is measured on its own, in its own face: its advance is where
+	// the next run on the line starts.
+	advances := make([][]float32, len(lines))
 	var width, ascent, descent float32
-	for _, line := range lines {
-		mt := m.Measure(ir.TextRun{Text: line, Font: font})
-		width = max32(width, mt.Advance)
-		ascent = max32(ascent, mt.Ascent)
-		descent = max32(descent, mt.Descent)
+	for i, line := range lines {
+		var lineW float32
+		for _, run := range line {
+			mt := m.Measure(ir.TextRun{Text: run.Text, Font: st.font(run)})
+			advances[i] = append(advances[i], mt.Advance)
+			lineW += mt.Advance
+			ascent = max32(ascent, mt.Ascent)
+			descent = max32(descent, mt.Descent)
+		}
+		width = max32(width, lineW)
 	}
 	if width <= 0 || ascent+descent <= 0 {
 		return errors.New("fynefigure/chart: the tooltip's text measured as nothing")
@@ -353,15 +378,19 @@ func (t *tooltip) render(content TooltipContent, dpr float64) error {
 
 	label := nrgba(st.Text)
 	y := pad + ascent
-	for _, line := range lines {
-		b.Text(ir.TextRun{
-			Text:  line,
-			Font:  font,
-			At:    ir.Point{X: pad, Y: y},
-			H:     ir.AlignStart,
-			V:     ir.AlignBaseline,
-			Color: label,
-		})
+	for i, line := range lines {
+		x := pad
+		for j, run := range line {
+			b.Text(ir.TextRun{
+				Text:  run.Text,
+				Font:  st.font(run),
+				At:    ir.Point{X: x, Y: y},
+				H:     ir.AlignStart,
+				V:     ir.AlignBaseline,
+				Color: label,
+			})
+			x += advances[i][j]
+		}
 		y += step
 	}
 	if err := b.Flush(); err != nil {
@@ -379,6 +408,63 @@ func (t *tooltip) render(content TooltipContent, dpr float64) error {
 	t.img.Resize(fyne.NewSize(float32(w), float32(h)))
 	t.refresh()
 	return nil
+}
+
+// font is the face a run of a tooltip in this style is drawn in.
+func (s TooltipStyle) font(run TooltipRun) ir.FontRef {
+	font := ir.FontRef{Size: float64(s.FontSize), Italic: s.Italic || run.Italic}
+	if s.Bold || run.Bold {
+		font.Weight = 700
+	}
+	return font
+}
+
+// tipLines breaks a tooltip's label into lines, and each line into the runs
+// it is drawn in. A plain Text is one run per line. An empty line stays a
+// line: it is measured as a run of nothing, so that it keeps its height.
+func tipLines(content TooltipContent) [][]TooltipRun {
+	runs := content.Runs
+	if len(runs) == 0 {
+		runs = []TooltipRun{{Text: content.Text}}
+	}
+	lines := [][]TooltipRun{nil}
+	for _, run := range runs {
+		for i, part := range strings.Split(run.Text, "\n") {
+			if i > 0 {
+				lines = append(lines, nil)
+			}
+			if part != "" {
+				last := len(lines) - 1
+				lines[last] = append(lines[last], TooltipRun{Text: part, Bold: run.Bold, Italic: run.Italic})
+			}
+		}
+	}
+	for i, line := range lines {
+		if len(line) == 0 {
+			lines[i] = []TooltipRun{{}}
+		}
+	}
+	return lines
+}
+
+// runFaces is where each run of a label starts and which face it is in: the
+// part of a [TooltipContent] that its Text does not already say.
+func runFaces(runs []TooltipRun) string {
+	var b strings.Builder
+	for _, run := range runs {
+		b.WriteString(strconv.Itoa(len(run.Text)))
+		switch {
+		case run.Bold && run.Italic:
+			b.WriteByte('I')
+		case run.Bold:
+			b.WriteByte('b')
+		case run.Italic:
+			b.WriteByte('i')
+		default:
+			b.WriteByte('r')
+		}
+	}
+	return b.String()
 }
 
 // measurer is a backend the tooltip's text can be measured on, in the fonts it
@@ -441,6 +527,13 @@ func (c *Chart) tipContent(h figure.Hit) TooltipContent {
 		out = c.cfg.content(h)
 	} else if c.cfg.format != nil {
 		out.Text = c.cfg.format(h)
+	}
+	if len(out.Runs) > 0 {
+		var text strings.Builder
+		for _, run := range out.Runs {
+			text.WriteString(run.Text)
+		}
+		out.Text = text.String()
 	}
 	out.Style = out.Style.over(c.cfg.style.over(c.themeTooltipStyle()))
 	return out

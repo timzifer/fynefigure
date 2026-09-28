@@ -84,6 +84,42 @@ func TestATooltipDrawsEveryLineOfALabel(t *testing.T) {
 	}
 }
 
+// A run set bold is drawn bold, and only that run: the rest of the line keeps
+// the regular face, and the line as a whole still reads as one label.
+func TestATooltipRunCarriesItsOwnFace(t *testing.T) {
+	regular := shownContent(t, chart.TooltipContent{Runs: []chart.TooltipRun{
+		{Text: "Status"}, {Text: " 10:00 - 11:00"},
+	}})
+	bold := shownContent(t, chart.TooltipContent{Runs: []chart.TooltipRun{
+		{Text: "Status", Bold: true}, {Text: " 10:00 - 11:00"},
+	}})
+	plain := shownTooltip(t, "Status 10:00 - 11:00")
+
+	if got, want := labelInk(bold.Image), labelInk(regular.Image); got <= want {
+		t.Errorf("a bold run drew %d ink against %d regular, want more", got, want)
+	}
+	if bold.Size().Height != plain.Size().Height {
+		t.Errorf("runs on one line are %v high against %v for the same text, want one line",
+			bold.Size().Height, plain.Size().Height)
+	}
+	if w := regular.Size().Width - plain.Size().Width; w < -2 || w > 2 {
+		t.Errorf("two regular runs are %v wide against %v for the same text, want the same",
+			regular.Size().Width, plain.Size().Width)
+	}
+}
+
+// A content with runs says what its runs say: that is what the chart hides an
+// empty tooltip by, and what a test reads.
+func TestATooltipWithRunsHasTheirText(t *testing.T) {
+	c := chart.New(plot(), chart.Interactive(true), chart.ThemeFont(false),
+		chart.TooltipContentFunc(func(figure.Hit) chart.TooltipContent {
+			return chart.TooltipContent{Runs: []chart.TooltipRun{{Text: "a", Bold: true}, {Text: "\nb"}}}
+		}))
+	if got := chart.TipContent(c, figure.Hit{}).Text; got != "a\nb" {
+		t.Errorf("the tooltip says %q, want %q", got, "a\nb")
+	}
+}
+
 func TestATooltipTakesItsStyleFromTheOptions(t *testing.T) {
 	want := chart.TooltipStyle{Padding: 20, FontSize: 30}
 	c := chart.New(plot(), chart.Interactive(true), chart.ThemeFont(false), chart.TooltipLook(want))
@@ -180,8 +216,14 @@ func tooltipImage(t *testing.T, c *chart.Chart) *canvas.Image {
 // it was drawn into.
 func shownTooltip(t *testing.T, label string) *canvas.Image {
 	t.Helper()
+	return shownContent(t, chart.TooltipContent{Text: label})
+}
+
+// shownContent is [shownTooltip] for a content, runs and all.
+func shownContent(t *testing.T, content chart.TooltipContent) *canvas.Image {
+	t.Helper()
 	c := chart.New(plot(), chart.Interactive(true), chart.ThemeFont(false),
-		chart.TooltipFormat(func(figure.Hit) string { return label }))
+		chart.TooltipContentFunc(func(figure.Hit) chart.TooltipContent { return content }))
 	win := test.NewTempWindow(t, c)
 	win.Resize(fyne.NewSize(500, 300))
 	c.Resize(fyne.NewSize(500, 300))
@@ -208,7 +250,11 @@ func tooltipBox(t *testing.T, label string) fyne.Size {
 // nor its border — the label's own, which is what a dropped glyph loses.
 func tooltipInk(t *testing.T, label string) int {
 	t.Helper()
-	img := shownTooltip(t, label).Image
+	return labelInk(shownTooltip(t, label).Image)
+}
+
+// labelInk counts the label's pixels in a drawn tooltip; see [tooltipInk].
+func labelInk(img image.Image) int {
 	b := img.Bounds()
 
 	// The middle of the box, away from the rounded corners and the outline.

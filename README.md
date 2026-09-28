@@ -270,6 +270,16 @@ func (r reading) Tooltip(h figure.Hit) chart.TooltipContent {
 c := chart.New(p, chart.TooltipWith(reading{unit: "°C"}))
 ```
 
+A label that sets part of itself apart — a name in bold before its numbers —
+gives its text as `Runs` rather than `Text`, each run in a face of its own:
+
+```go
+chart.TooltipContent{Runs: []chart.TooltipRun{
+    {Text: "Running", Bold: true},
+    {Text: " 10:00 - 11:30; 1:30 h"},
+}}
+```
+
 Every field of a `chart.TooltipStyle` is optional: what a content leaves zero
 comes from `chart.TooltipLook`, and what that leaves zero comes from the Fyne
 theme.

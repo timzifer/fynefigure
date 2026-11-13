@@ -39,15 +39,33 @@ func TestAFollowedAxisLeavesTheOldestDataBehind(t *testing.T) {
 	}
 }
 
-func TestAnUnfollowedAxisKeepsEverythingItHasSeen(t *testing.T) {
-	c, st := streaming(t, chart.ThemeFont(false), chart.Follow(false, false))
+// Since figure v0.15 every render derives an axis from the rows it draws
+// (figure's ADR 0090), so an axis that is not followed forgets the rows the
+// window dropped too. One that should remember them says so with
+// scale.HighWater, and following leaves it alone.
+func TestAnUnfollowedHighWaterAxisKeepsEverythingItHasSeen(t *testing.T) {
+	st := data.NewStream("t", "y").Window(100)
+	appendRows(t, st, 0, 100)
+	p := figure.New(figure.Size(400, 250))
+	p.X(scale.Linear(scale.HighWater()))
+	p.Y(scale.Linear(scale.Domain(0, 2)))
+	p.Add(geom.Line(st.Source(), geom.X("t"), geom.Y("y")))
+
+	c := chart.New(p, chart.Interactive(true), chart.ThemeFont(false), chart.Follow(false, false))
+	c.Stream(st)
+	win := test.NewTempWindow(t, c)
+	win.Resize(fyne.NewSize(500, 300))
+	c.Resize(fyne.NewSize(500, 300))
+	if err := c.Err(); err != nil {
+		t.Fatalf("laying the chart out: %v", err)
+	}
 
 	first := domainOf(t, c)
 	appendRows(t, st, 100, 400)
 	c.Refresh()
 
 	if after := domainOf(t, c); after[0] != first[0] {
-		t.Errorf("an unfollowed axis moved its start from %v to %v", first[0], after[0])
+		t.Errorf("a high-water axis moved its start from %v to %v", first[0], after[0])
 	}
 }
 

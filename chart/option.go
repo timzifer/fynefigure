@@ -173,12 +173,12 @@ func DefaultTooltip(h figure.Hit) string {
 // Two things stand between a sliding window and an axis that follows it, and
 // this handles both.
 //
-// A scale is *trained*, and training accumulates: a domain only ever grows,
-// because that is what a chart of a fixed table wants — every render sees the
-// same rows, and the axis must not depend on the order they arrived in. A
-// window whose oldest row leaves on every frame is the other case, so a
-// followed axis is released before each frame and established again from the
-// rows that are there.
+// A scale is *trained* on the rows a render draws. figure derives every
+// unpinned axis again on each render (its ADR 0090), so an axis that is not
+// followed forgets the rows a window dropped as well; one that should remember
+// the most it has ever shown says so with scale.HighWater. A followed axis
+// goes further: it is released before each frame — a high-water mark and a
+// zoom included — and established again from the rows that are there.
 //
 // And a linear axis *nices* by default: it rounds its domain outward to whole
 // tick steps. That frames a still chart well and fights a moving one — the
@@ -202,17 +202,16 @@ func Follow(x, y bool) Option {
 // Detail sets how much of the screen's resolution a chart is drawn at while a
 // reader is dragging or zooming it. The default is 1: full resolution, always.
 //
-// A rasterizer's work is per pixel; stretching a small picture over a large
-// area is the graphics card's, and free. So a chart can be drawn coarser while
-// a gesture is in flight and properly once it ends, and on the CPU rasterizer
-// that is worth a great deal — 23 ms a frame becomes 7 ms at 0.5, which is the
-// difference between twenty frames a second and fifty.
+// Part of a rasterizer's work is per pixel; stretching a small picture over a
+// large area is the graphics card's, and free. So a chart can be drawn coarser
+// while a gesture is in flight and properly once it ends. On figure's stilus
+// rasterizer the saving is modest — a 900x480 pan goes from 0.8 ms to 0.5 ms
+// at 0.5 — because most of a frame is spent per mark rather than per pixel.
 //
 // It is off by default because it is visible: a chart being dragged is soft
 // until it is let go, and that is a trade a reader should be offered rather
-// than given. Reach for it when a chart is large, or the data heavy, or the
-// machine slow — and note that the GPU tier in fynefigure/gpu makes the same
-// frame cost 5 ms without softening anything, so try that first.
+// than given. Reach for it when a chart is very large or the machine slow, and
+// measure first.
 //
 // Values outside (0, 1] mean the same as 1. A chart nobody is touching is
 // always drawn at full resolution.
@@ -269,8 +268,9 @@ func FollowTheme(on bool) Option { return func(c *config) { c.theme = on } }
 //
 // Fyne renders text through a shaper that falls back: a character its theme
 // font has no glyph for is drawn from another font, so the label appears. The
-// rasterizer that draws a chart is handed one font and has no fallback, so the
-// same character is drawn as nothing at all — silently, leaving a gap.
+// rasterizer that draws a chart is handed one font and no fallback, so the
+// same character is drawn as `?` — the label says something it was not meant
+// to.
 //
 // That is not hypothetical. Fyne's own theme font is NotoSans-Regular, which
 // has no glyph for U+2264, U+2265 or U+221E: a chart titled "30° ≤ x" loses

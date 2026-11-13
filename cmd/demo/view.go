@@ -12,7 +12,7 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/widget"
 	"github.com/timzifer/figure"
-	ggbackend "github.com/timzifer/figure/backend/gg"
+	stilusbackend "github.com/timzifer/figure/backend/stilus"
 	"github.com/timzifer/figure/interact"
 	"github.com/timzifer/figure/three"
 	"github.com/timzifer/fynefigure"
@@ -173,11 +173,11 @@ func (v *view) err() error {
 func (v *view) export(path string) error {
 	switch {
 	case len(v.flats) > 0:
-		return v.flats[0].Plot().Render(ggbackend.PNG(path))
+		return v.flats[0].Plot().Render(stilusbackend.PNG(path))
 	case len(v.orbits) > 0:
-		return v.orbits[0].Plot().Render(ggbackend.PNG(path))
+		return v.orbits[0].Plot().Render(stilusbackend.PNG(path))
 	case v.still != nil:
-		return v.still.grid.Render(ggbackend.PNG(path))
+		return v.still.grid.Render(stilusbackend.PNG(path))
 	}
 	return errors.New("nothing on stage")
 }
@@ -256,7 +256,7 @@ func (s *still) CreateRenderer() fyne.WidgetRenderer { return widget.NewSimpleRe
 func (s *still) render() {
 	start := time.Now()
 	var buf bytes.Buffer
-	if s.err = s.grid.Render(ggbackend.Writer(&buf, ggbackend.FormatPNG)); s.err != nil {
+	if s.err = s.grid.Render(stilusbackend.Writer(&buf, stilusbackend.FormatPNG)); s.err != nil {
 		return
 	}
 	img, err := png.Decode(&buf)

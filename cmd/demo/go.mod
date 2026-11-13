@@ -1,31 +1,23 @@
-// The demo is a module of its own so that it can import the GPU tier.
-//
-// fynefigure/gpu is nested in fynefigure and so excluded from its module
-// graph — deliberately, so that a chart widget does not cost a consumer wgpu,
-// naga and a foreign-function layer nobody asked for. That leaves no way for a
-// package inside fynefigure to import it: a require in the parent would put
-// the GPU stack back in every consumer's graph, which is the arrangement the
-// nesting exists to prevent.
-//
-// A third module resolves it. Nothing imports the demo, so the replace
-// directives below cost no one anything, and the widget and the tier stay as
-// separate as they were.
+// The demo is a module of its own so that what it pulls in to show every
+// chart — and the replace directive that points it at the widget beside it —
+// stays out of the widget's module graph. Nothing imports the demo, so the
+// replace below costs no one anything.
 module github.com/timzifer/fynefigure/cmd/demo
 
-go 1.25.0
+go 1.27.1
 
 require (
 	fyne.io/fyne/v2 v2.7.3
-	github.com/timzifer/figure v0.14.0
-	github.com/timzifer/figure/backend/gg v0.12.0
+	github.com/timzifer/figure v0.15.2
+	github.com/timzifer/figure/backend/stilus v0.15.2
 	github.com/timzifer/fynefigure v0.0.0
-	github.com/timzifer/fynefigure/gpu v0.0.0
 )
 
 require (
 	fyne.io/systray v1.12.0 // indirect
 	github.com/BurntSushi/toml v1.5.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/dsnet/compress v0.0.2-0.20230904184137-39efe44ab707 // indirect
 	github.com/fredbi/uri v1.1.1 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/fyne-io/gl-js v0.2.0 // indirect
@@ -34,16 +26,11 @@ require (
 	github.com/fyne-io/oksvg v0.2.0 // indirect
 	github.com/go-gl/gl v0.0.0-20231021071112-07e5d0ea2e71 // indirect
 	github.com/go-gl/glfw/v3.3/glfw v0.0.0-20240506104042-037f3cc74f2a // indirect
+	github.com/go-opentype/fonts v0.14.0 // indirect
+	github.com/go-opentype/opentype v0.21.1 // indirect
 	github.com/go-text/render v0.2.0 // indirect
 	github.com/go-text/typesetting v0.3.3 // indirect
-	github.com/go-webgpu/goffi v0.6.3 // indirect
-	github.com/go-webgpu/webgpu v0.5.5 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
-	github.com/gogpu/gg v0.52.5 // indirect
-	github.com/gogpu/gpucontext v0.29.0 // indirect
-	github.com/gogpu/gputypes v0.6.0 // indirect
-	github.com/gogpu/naga v0.19.0 // indirect
-	github.com/gogpu/wgpu v0.32.1 // indirect
 	github.com/hack-pad/go-indexeddb v0.3.2 // indirect
 	github.com/hack-pad/safejs v0.1.0 // indirect
 	github.com/jeandeaual/go-locale v0.0.0-20250612000132-0ef82f21eade // indirect
@@ -55,7 +42,7 @@ require (
 	github.com/srwiley/oksvg v0.0.0-20221011165216-be6e8873101c // indirect
 	github.com/srwiley/rasterx v0.0.0-20220730225603-2ab79fcdd4ef // indirect
 	github.com/stretchr/testify v1.11.1 // indirect
-	github.com/timzifer/figure/backend/gg/gpu v0.4.0 // indirect
+	github.com/timzifer/stilus v0.19.0 // indirect
 	github.com/yuin/goldmark v1.7.8 // indirect
 	golang.org/x/image v0.45.0 // indirect
 	golang.org/x/net v0.35.0 // indirect
@@ -65,7 +52,3 @@ require (
 )
 
 replace github.com/timzifer/fynefigure => ../..
-
-replace github.com/timzifer/fynefigure/gpu => ../../gpu
-
-replace github.com/gogpu/gg => github.com/timzifer/gg v0.52.6-figure.5

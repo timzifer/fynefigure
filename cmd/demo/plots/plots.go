@@ -1,7 +1,7 @@
 // Package plots is the catalogue of the kitchensink demo: every plot type
 // figure can draw, as a builder the app calls whenever it needs a fresh chart.
 //
-// The builders are ports of the figure gallery (backend/gg/cmd/gallery) and of
+// The builders are ports of the figure gallery (backend/stilus/cmd/gallery) and of
 // the figure examples, plus a few charts written for the demo. Each builder
 // makes its data and its plot anew on every call, because the app rebuilds a
 // chart when it switches renderer and a plot must not be shared between two

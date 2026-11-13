@@ -158,7 +158,7 @@ func (k *kitchen) teardown() {
 		k.stop = nil
 	}
 	// Off the stage first, then closed: a chart laid out once more after
-	// Close would open a new rasterizer, on whatever tier is current by then.
+	// Close would open a new rasterizer for nothing.
 	k.stage.Objects = nil
 	k.stage.Refresh()
 	if k.v != nil {
@@ -173,22 +173,6 @@ func (k *kitchen) rebuild() {
 	if k.cur != nil {
 		k.show(k.cur)
 	}
-}
-
-// setGPU switches the tier and reports whether it ended up where it was
-// asked to. A rasterizer holds GPU state from its first frame, so the chart
-// on stage is closed before the switch and built again after it — see
-// gpu.Disable.
-func (k *kitchen) setGPU(on bool) bool {
-	k.teardown()
-	ok := true
-	if on {
-		ok = gpuTier.Enable()
-	} else {
-		gpuTier.Disable()
-	}
-	k.rebuild()
-	return ok
 }
 
 // setInteractive is the one switch a live chart takes as it is.

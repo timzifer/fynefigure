@@ -7,14 +7,14 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
-	ggbackend "github.com/timzifer/figure/backend/gg"
+	stilusbackend "github.com/timzifer/figure/backend/stilus"
 	"github.com/timzifer/figure/ir"
 )
 
 // Target is a render destination that draws into memory and shows the result
 // in a Fyne canvas object.
 //
-// It is [ggbackend.Surface] with a Fyne front end. The surface keeps its
+// It is [stilusbackend.Surface] with a Fyne front end. The surface keeps its
 // pixels, so the backend it opens implements ir.Resizer and ir.Partial: a
 // resized chart is repainted in place, and a live one repaints only where it
 // changed. What this type adds is [Target.Object], the object to put in a
@@ -29,7 +29,7 @@ type Target struct {
 	// driver is not. Rather than depend on which, every path in or out of the
 	// surface goes through here, including the drawing itself: see Render.
 	mu     sync.Mutex
-	surf   *ggbackend.Surface
+	surf   *stilusbackend.Surface
 	raster *canvas.Raster
 	cfg    config
 
@@ -61,7 +61,7 @@ var _ ir.Target = (*Target)(nil)
 // until a chart is drawn into it.
 func New(opts ...Option) *Target {
 	c := build(opts)
-	t := &Target{cfg: c, surf: ggbackend.NewSurface(c.gg...)}
+	t := &Target{cfg: c, surf: stilusbackend.NewSurface(c.raster...)}
 	t.raster = canvas.NewRaster(t.generate)
 	t.raster.ScaleMode = c.scale
 	return t
@@ -214,11 +214,11 @@ func (t *Target) SetFont(regular, bold, italic []byte) error {
 	defer t.mu.Unlock()
 	err := t.surf.Close()
 	if len(regular) == 0 {
-		t.cfg.gg = nil
+		t.cfg.raster = nil
 	} else {
-		t.cfg.gg = []ggbackend.Option{ggbackend.WithFont(regular, bold, italic)}
+		t.cfg.raster = []stilusbackend.Option{stilusbackend.WithFont(regular, bold, italic)}
 	}
-	t.surf = ggbackend.NewSurface(t.cfg.gg...)
+	t.surf = stilusbackend.NewSurface(t.cfg.raster...)
 	t.back, t.shown = nil, 0
 	return err
 }

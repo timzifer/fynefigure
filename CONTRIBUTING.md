@@ -2,24 +2,25 @@
 
 ## Layout
 
-Three modules, one repository.
+Two modules, one repository.
 
 | Path | Module | Depends on |
 |---|---|---|
-| `.` | `github.com/timzifer/fynefigure` | Fyne, figure, figure's raster backend |
-| `gpu` | `github.com/timzifer/fynefigure/gpu` | the above plus figure's GPU tier, and through it wgpu |
-| `cmd/demo` | `github.com/timzifer/fynefigure/cmd/demo` | both of the above |
+| `.` | `github.com/timzifer/fynefigure` | Fyne, figure, figure's raster backend (`backend/stilus`) |
+| `cmd/demo` | `github.com/timzifer/fynefigure/cmd/demo` | the above |
 
-The split is not cosmetic. A nested module is excluded from its parent's module
-graph, so importing the widget cannot pull a GPU stack into a build that never
-asked for one. It is the arrangement figure makes for the same tier one level
-up.
+The demo is a module of its own so that what it pulls in to show every chart
+stays out of the widget's module graph. Its `replace` directive points at the
+directory above it, and nothing imports the demo, so it costs no one anything.
 
-The demo is a third module for the other side of that: it is the one thing here
-that wants both the widget and the tier, and the only way to import a nested
-module is from outside the one it is nested in. Its `replace` directives point
-at the two directories above it, and nothing imports the demo, so they cost no
-one anything.
+There used to be a third, `gpu`, which switched on gg's GPU tier. figure
+replaced gg with stilus
+([ADR 0094](https://github.com/timzifer/figure/blob/main/docs/adr/0094-the-raster-backend-is-stilus.md)),
+which leaves the tier nothing to accelerate, and stilus on the CPU draws a
+frame faster than the tier did — so it was removed rather than ported.
+
+Both modules declare Go 1.27.1, because `backend/stilus` does: the font
+library it draws text with requires it.
 
 Inside the main module the split is figure's own, between `backend/window` and
 `backend/window/show`: `fynefigure` draws, and `fynefigure/chart` and
@@ -38,9 +39,9 @@ reading Fyne's theme — is in `internal/look`.
 ```sh
 # what CI runs
 gofmt -l .                                   # must print nothing
-go vet ./... && (cd gpu && go vet ./... && go vet -tags tierparity ./...)
-go build ./... && (cd gpu && go build ./...)
-go test ./... && (cd gpu && go test ./...)
+go vet ./... && (cd cmd/demo && go vet ./...)
+go build ./... && (cd cmd/demo && go build ./...)
+go test ./... && (cd cmd/demo && go test ./...)
 go test -race ./...
 
 # the library must not need cgo; only the demo does, because Fyne's desktop
@@ -48,8 +49,7 @@ go test -race ./...
 CGO_ENABLED=0 go build . ./chart ./orbit
 
 # a chart in a window, by hand — the one thing CI cannot check. The demo is a
-# module of its own, because it opts into the GPU tier and that tier is nested
-# inside this one: see cmd/demo/go.mod.
+# module of its own: see cmd/demo/go.mod.
 (cd cmd/demo && go run .)
 ```
 
@@ -57,7 +57,7 @@ Developing against a figure checkout next door wants a workspace. It is not
 committed, and the `require` directives always name published tags:
 
 ```sh
-go work init . ./gpu ../figure ../figure/backend/gg ../figure/backend/gg/gpu
+go work init . ./cmd/demo ../figure ../figure/backend/stilus
 ```
 
 ## The measurements
@@ -68,20 +68,11 @@ benchmarks are where they come from. Re-run them before changing one.
 ```sh
 go test -run='^$' -bench=Frame -benchtime=25x .        # what a frame costs
 go test -run='^$' -bench=Drag  -benchtime=20x ./chart  # what the pacing saves
-go test -run='^$' -bench=Frame -benchtime=25x ./gpu    # the GPU tier
 ```
 
 `fynefigure.DamageBudget`, `chart.Detail`, `chart.FrameInterval` and the
 choice to draw whole frames rather than partial ones each have a table in their
 doc comment. A change that moves one should move its table too.
-
-The GPU tier has a parity test behind a build tag, because it gives the device
-back halfway through and every benchmark after it would then measure the CPU
-while saying GPU:
-
-```sh
-cd gpu && go test -tags tierparity -run Parity ./...
-```
 
 ## Tests
 
@@ -110,9 +101,11 @@ and `Live.Close` both reach back into the target — so neither goes inside one.
 distance from the last position it was told about, and wheel deltas are summed,
 which is exact. Anything added to the gesture path has to keep that true.
 
-**A followed axis is released and un-niced.** Training accumulates and a linear
-axis rounds its domain outward; both are right for a still chart and wrong for
-a sliding window. See `chart.Follow`.
+**A followed axis is released and un-niced.** figure retrains every unpinned
+axis on each render, but a zoom, a pin and a high-water mark survive that, and
+a linear axis rounds its domain outward — right for a still chart and wrong
+for a sliding window. See `chart.Follow`.
 
-**Partial repaints are off on purpose.** They cost six times what they save on
-the CPU rasterizer. The number is in `fynefigure.DamageBudget`.
+**Partial repaints are off on purpose.** On stilus they save a fifth at best,
+on a frame that is already well under a millisecond. The number is in
+`fynefigure.DamageBudget`.

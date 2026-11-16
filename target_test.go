@@ -12,20 +12,20 @@ import (
 	"fyne.io/fyne/v2/canvas"
 
 	"github.com/timzifer/figure"
-	ggbackend "github.com/timzifer/figure/backend/gg"
+	stilusbackend "github.com/timzifer/figure/backend/stilus"
 	"github.com/timzifer/figure/geom"
 	"github.com/timzifer/fynefigure"
 )
 
 // The claim this package rests on is that a chart in a Fyne widget is the
 // chart figure would have written to a file. It holds because there is one
-// rasterizer: the target here is backend/gg's surface with a Fyne front end,
+// rasterizer: the target here is backend/stilus's surface with a Fyne front end,
 // so anything that made the two differ would be the presentation layer having
 // got into the drawing path.
 
 func TestAFrameIsWhatTheRasterBackendWouldHaveWritten(t *testing.T) {
 	var buf bytes.Buffer
-	if err := plot().Render(ggbackend.Writer(&buf, ggbackend.FormatPNG)); err != nil {
+	if err := plot().Render(stilusbackend.Writer(&buf, stilusbackend.FormatPNG)); err != nil {
 		t.Fatalf("rendering the reference PNG: %v", err)
 	}
 	want, err := png.Decode(&buf)

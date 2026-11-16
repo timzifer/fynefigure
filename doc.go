@@ -26,7 +26,8 @@
 // image — is the thing figure's ADR 0021 rejects: the day it disagrees with
 // the first is the day a chart looks different on screen than in the file it
 // exports. So this package does what the native window does. It rasterizes
-// with backend/gg, which is figure's one rasterizer, and presents the result.
+// with backend/stilus, which is figure's one rasterizer, and presents the
+// result.
 // A chart in a Fyne widget is the same pixels as the PNG beside it, and text
 // is measured with the face it is drawn with rather than approximated.
 package fynefigure

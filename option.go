@@ -2,14 +2,14 @@ package fynefigure
 
 import (
 	"fyne.io/fyne/v2/canvas"
-	ggbackend "github.com/timzifer/figure/backend/gg"
+	stilusbackend "github.com/timzifer/figure/backend/stilus"
 )
 
 // Option configures a [Target].
 type Option func(*config)
 
 type config struct {
-	gg     []ggbackend.Option
+	raster []stilusbackend.Option
 	scale  canvas.ImageScale
 	budget float32
 }
@@ -22,7 +22,7 @@ type config struct {
 // Without it a chart uses the same fonts every other figure raster does,
 // which is what makes its pixels comparable with an exported PNG.
 func Font(regular, bold, italic []byte) Option {
-	return func(c *config) { c.gg = append(c.gg, ggbackend.WithFont(regular, bold, italic)) }
+	return func(c *config) { c.raster = append(c.raster, stilusbackend.WithFont(regular, bold, italic)) }
 }
 
 // ScaleMode sets how Fyne resamples the chart if it ever has to.
@@ -40,22 +40,24 @@ func ScaleMode(m canvas.ImageScale) Option {
 // frame every time.
 //
 // figure works out where a frame changed and offers the rasterizer the chance
-// to repaint only that. It sounds like a saving and here it is not: the
-// rasterizer clears the damaged box and clips every drawing call to it, and its
-// clip is a mask it rasterizes across the surface and then samples per pixel —
-// on top of the clip a panel already puts there. Measured on a 900x480 chart,
-// per frame:
+// to repaint only that: it clears the damaged box and clips every drawing call
+// to it. Under gg, figure's earlier rasterizer, that clip was a mask sampled
+// per pixel and a partial frame cost six times a whole one. stilus clips a
+// rectangle for nothing, so the penalty is gone — and so is most of the point,
+// because a whole frame is already cheap. Measured on a 900x480 chart on an
+// Apple M4, per frame:
 //
 //	                          whole frame   partial
-//	a stream sliding left        29 ms       180 ms
+//	a stream sliding left       0.23 ms     0.18 ms
 //	a stream growing at its
-//	  right-hand tip             30 ms       170 ms
-//	panning a static chart       50 ms        50 ms
+//	  right-hand tip            0.41 ms     0.34 ms
+//	panning a static chart      0.78 ms     0.80 ms
 //
-// Six times slower where it does anything, and a wash where it does not. So
-// the default is off, and this is here for a chart whose changes really are
-// confined to a corner of it, and for the day the rasterizer's clip gets
-// cheaper. There is a benchmark; measure before turning it on.
+// A fifth saved where it does anything, and a wash where it does not. The
+// default stays off, because a partial repaint is one more thing that can
+// leave a stale pixel behind, and this is here for a chart whose changes
+// really are confined to a corner of it. There is a benchmark; measure before
+// turning it on.
 func DamageBudget(f float32) Option {
 	return func(c *config) {
 		if f < 0 {

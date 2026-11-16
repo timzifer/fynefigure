@@ -1,7 +1,7 @@
 // Package plots is the catalogue of the kitchensink demo: every plot type
 // figure can draw, as a builder the app calls whenever it needs a fresh chart.
 //
-// The builders are ports of the figure gallery (backend/gg/cmd/gallery) and of
+// The builders are ports of the figure gallery (backend/stilus/cmd/gallery) and of
 // the figure examples, plus a few charts written for the demo. Each builder
 // makes its data and its plot anew on every call, because the app rebuilds a
 // chart when it switches renderer and a plot must not be shared between two
@@ -37,6 +37,7 @@ const (
 	GroupRelational    = "Relational"
 	GroupAnnotations   = "Annotations"
 	GroupLayout        = "Layout"
+	GroupMarket        = "Market"
 	Group3D            = "3D"
 )
 
@@ -44,7 +45,7 @@ const (
 func Groups() []string {
 	return []string{
 		GroupBasics, GroupAxes, GroupStacking, GroupDistributions, GroupFields,
-		GroupPolar, GroupSmith, GroupRelational, GroupAnnotations, GroupLayout, Group3D,
+		GroupPolar, GroupSmith, GroupRelational, GroupAnnotations, GroupLayout, GroupMarket, Group3D,
 	}
 }
 
@@ -53,7 +54,7 @@ func All() []Entry {
 	var out []Entry
 	for _, g := range [][]Entry{
 		basics(), axes(), stacking(), distributions(), fields(),
-		polar(), smith(), relational(), annotations(), layout(), scenes(),
+		polar(), smith(), relational(), annotations(), layout(), market(), scenes(),
 	} {
 		out = append(out, g...)
 	}
@@ -65,6 +66,7 @@ func All() []Entry {
 // screen: add an id at the front when you add an entry for one.
 func Newest() []string {
 	return []string{
+		"market", "market-bars", "market-hollow",
 		"horizon",
 		"nichols", "nichols-peak", "smith-vswr",
 		"contour", "contour-heatmap", "contour-floor",

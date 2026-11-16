@@ -257,7 +257,7 @@ func axes() []Entry {
 				figure.Legend(true),
 			)},
 		{ID: "decimation", Group: g, Title: "Big data (decimation)",
-			Note: "Two million samples reduced min/max per pixel column, so the one-sample spike and the NaN dropout survive; pan and zoom to feel the GPU path.",
+			Note: "Two million samples reduced min/max per pixel column, so the one-sample spike and the NaN dropout survive; pan and zoom to feel the rasterizer.",
 			Plot: flat("Two million samples", 900, 420, theme.Light, func(p *figure.Plot) {
 				src := bigSignal(2_000_000)
 				p.X(scale.Linear(scale.Nice()))

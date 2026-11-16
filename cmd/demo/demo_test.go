@@ -6,6 +6,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/test"
+	"github.com/timzifer/figure"
 )
 
 // open puts the kitchen in a test window at the size the demo opens at.
@@ -53,39 +54,6 @@ func TestEveryEntryBuildsAndPaints(t *testing.T) {
 	}
 }
 
-// The GPU switch closes the chart on stage, switches the tier and builds the
-// chart again, and has to leave a chart that draws on whichever tier it lands.
-func TestTheGPUSwitchRebuildsAChartThatPaints(t *testing.T) {
-	k := open(t)
-	was := gpuTier.Enabled()
-	t.Cleanup(func() {
-		if was {
-			gpuTier.Enable()
-		}
-	})
-	k.show(k.cat.find("decimation"))
-	settle(k)
-
-	for _, on := range []bool{false, true, false, true} {
-		got := k.setGPU(on)
-		settle(k)
-		if on && got != gpuTier.Available() {
-			t.Errorf("setGPU(true) = %v with the tier available = %v", got, gpuTier.Available())
-		}
-		if !on && gpuTier.Enabled() {
-			t.Error("setGPU(false) left the tier on")
-		}
-		if err := k.err(); err != nil {
-			t.Errorf("after setGPU(%v): %v", on, err)
-		}
-		s := k.rec.snapshot()
-		if s.painted == 0 {
-			t.Errorf("after setGPU(%v): nothing was painted", on)
-		}
-		t.Logf("GPU %-5v  enabled %-5v  draw %s", on, gpuTier.Enabled(), ms(s.draw.last))
-	}
-}
-
 // A benchmark nudge must paint a frame on every kind of stage — a flat chart
 // panned, a scene turned, a still drawn again — or the benchmark times out.
 func TestANudgePaints(t *testing.T) {
@@ -108,7 +76,7 @@ func TestANudgePaints(t *testing.T) {
 // chart that is off the stage.
 func TestSwitchingAwayStopsAnimation(t *testing.T) {
 	k := open(t)
-	for _, id := range []string{"live", "transition"} {
+	for _, id := range []string{"live", "market-live", "transition"} {
 		k.show(k.cat.find(id))
 		settle(k)
 		time.Sleep(300 * time.Millisecond)
@@ -146,5 +114,33 @@ func TestTheTreeOpensOnNew(t *testing.T) {
 	k.open("signal")
 	if k.node != "signal" || !k.tree.IsBranchOpen(groupPrefix+k.cur.group) {
 		t.Errorf("open(signal): node %q, group open %v", k.node, k.tree.IsBranchOpen(groupPrefix+k.cur.group))
+	}
+}
+
+// A pointer over the live market puts a crosshair on the candle under it while
+// the feed runs: the crosshair is shown, has the chart's row index to snap to,
+// and the move paints a frame.
+func TestTheMarketCrosshairFollowsThePointer(t *testing.T) {
+	k := open(t)
+	k.show(k.cat.find("market-live"))
+	settle(k)
+	c := k.v.flats[0]
+	cross, ok := c.CurrentOverlay().(*figure.Crosshair)
+	if !ok {
+		t.Fatalf("the live market's overlay is %T, want a crosshair", c.CurrentOverlay())
+	}
+
+	at := fyne.CurrentApp().Driver().AbsolutePositionForObject(c)
+	size := c.Size()
+	before := k.rec.snapshot().painted
+	test.MoveMouse(k.w.Canvas(), at.Add(fyne.NewPos(size.Width*2/3, size.Height/3)))
+	if !cross.Show {
+		t.Error("a pointer over the price panel shows no crosshair")
+	}
+	if cross.Snap == nil {
+		t.Error("the crosshair has no row index to snap to")
+	}
+	if k.rec.snapshot().painted == before {
+		t.Error("moving the crosshair painted no frame")
 	}
 }

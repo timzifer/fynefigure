@@ -14,7 +14,7 @@ import (
 )
 
 // benchFrames is how many frames a benchmark draws: enough for a p95 to mean
-// something, few enough to finish in a second on the GPU.
+// something, few enough to finish in well under a second.
 const benchFrames = 60
 
 const benchHint = "Pans the chart a pixel at a time — turns a scene, redraws a still — and times each call to its painted frame."
@@ -53,8 +53,7 @@ var rowNames = [...]string{
 type panel struct {
 	k *kitchen
 
-	gpuCheck, pointer, coarse *widget.Check
-	backend                   *widget.Label
+	pointer, coarse *widget.Check
 
 	values   []*widget.Label
 	errLabel *widget.Label
@@ -73,20 +72,6 @@ type panel struct {
 func newPanel(k *kitchen) *panel {
 	p := &panel{k: k}
 
-	p.gpuCheck = widget.NewCheck("GPU", func(on bool) {
-		if p.quiet {
-			return
-		}
-		if !k.setGPU(on) {
-			p.set(p.gpuCheck, false)
-			k.say("The GPU tier could not be brought back, so the chart is drawn on the CPU.")
-		}
-		p.refresh()
-	})
-	p.set(p.gpuCheck, gpuTier.Enabled())
-	if !gpuTier.Available() {
-		p.gpuCheck.Disable()
-	}
 	p.pointer = widget.NewCheck("Interactive", func(on bool) {
 		if !p.quiet {
 			k.setInteractive(on)
@@ -99,8 +84,6 @@ func newPanel(k *kitchen) *panel {
 		}
 	})
 	p.set(p.coarse, k.detail)
-	p.backend = widget.NewLabel("")
-	p.backend.Wrapping = fyne.TextWrapWord
 
 	form := container.New(layout.NewFormLayout())
 	for _, name := range rowNames {
@@ -132,7 +115,7 @@ func newPanel(k *kitchen) *panel {
 	})
 
 	p.obj = container.NewVBox(
-		widget.NewCard("Rendering", "", container.NewVBox(p.gpuCheck, p.pointer, p.coarse, p.backend)),
+		widget.NewCard("Rendering", "", container.NewVBox(p.pointer, p.coarse)),
 		widget.NewCard("Timings", "", container.NewVBox(form, p.errLabel)),
 		widget.NewCard("Benchmark", "", container.NewVBox(p.bench, p.benchOut)),
 		widget.NewCard("Chart", "", container.NewVBox(p.fit, p.export, p.reset)),
@@ -188,19 +171,6 @@ func (p *panel) refresh() {
 		p.show(rowSurface, fmt.Sprintf("%d×%d @%.3g", s.w, s.h, s.dpr))
 	} else {
 		p.show(rowSurface, "—")
-	}
-
-	var tier string
-	switch {
-	case gpuTier.Enabled():
-		tier = "Drawing on the GPU tier."
-	case gpuTier.Available():
-		tier = "Drawing on the CPU rasterizer; the GPU tier is off."
-	default:
-		tier = "Drawing on the CPU rasterizer: no GPU device answered."
-	}
-	if p.backend.Text != tier {
-		p.backend.SetText(tier)
 	}
 
 	if err := p.k.err(); err != nil {

@@ -12,7 +12,7 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	fynetheme "fyne.io/fyne/v2/theme"
 	"github.com/timzifer/figure"
-	ggbackend "github.com/timzifer/figure/backend/gg"
+	stilusbackend "github.com/timzifer/figure/backend/stilus"
 	"github.com/timzifer/figure/ir"
 )
 
@@ -137,8 +137,8 @@ type tooltip struct {
 	// one-pixel surface its text is measured on. Measuring needs an open
 	// backend and sizing the box needs the measurements, so they cannot be
 	// the same surface.
-	draw    *ggbackend.Surface
-	meas    *ggbackend.Surface
+	draw    *stilusbackend.Surface
+	meas    *stilusbackend.Surface
 	measB   ir.Backend
 	measDPR float64
 
@@ -411,12 +411,12 @@ func (t *tooltip) open(w, h int, dpr float64) (ir.Backend, error) {
 }
 
 // surface returns a rasterizer in the tooltip's fonts.
-func (t *tooltip) surface() *ggbackend.Surface {
-	var opts []ggbackend.Option
+func (t *tooltip) surface() *stilusbackend.Surface {
+	var opts []stilusbackend.Option
 	if len(t.fonts[0]) > 0 {
-		opts = append(opts, ggbackend.WithFont(t.fonts[0], t.fonts[1], t.fonts[2]))
+		opts = append(opts, stilusbackend.WithFont(t.fonts[0], t.fonts[1], t.fonts[2]))
 	}
-	return ggbackend.NewSurface(opts...)
+	return stilusbackend.NewSurface(opts...)
 }
 
 // place puts the tooltip beside the pointer, and on the other side of it

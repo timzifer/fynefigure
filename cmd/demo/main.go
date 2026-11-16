@@ -3,13 +3,11 @@
 //
 //	cd cmd/demo
 //	go run .
-//	go run . -plot surface -cpu
+//	go run . -plot surface
 //	go run . -list
 //
-// It is a module of its own so that it can import the GPU tier, which is
-// nested inside the widget's module and so outside its graph. See go.mod
-// beside this file, and gpu.go for the tier itself, which is not every
-// platform's to have.
+// It is a module of its own so that what it pulls in to show every chart
+// stays out of the widget's module graph. See go.mod beside this file.
 //
 // The tree on the left is the catalogue: every mark, coordinate system and
 // layout figure has, grouped the way docs/chart-types.md groups them, and the
@@ -34,12 +32,8 @@
 // Benchmark drives sixty frames through the chart and times each from the
 // call to the painted frame.
 //
-// Above the numbers are the switches. GPU puts the rasterizer on figure's GPU
-// tier or takes it off, at run time: the chart on stage is closed, the tier is
-// switched with gpu.Disable or gpu.Enable, and the chart is built again,
-// because a rasterizer keeps GPU state from its first frame and cannot be
-// switched under a live one. Interactive turns the pointer off and on without
-// a rebuild. Half resolution draws a flat chart coarse while it is dragged and
+// Above the numbers are the switches. Interactive turns the pointer off and on
+// without a rebuild. Half resolution draws a flat chart coarse while it is dragged and
 // sharpens it afterwards — the frame rate is the thing to watch.
 //
 // The single charts are in package plots, ported from figure's gallery and
@@ -57,7 +51,6 @@ import (
 
 func main() {
 	first := flag.String("plot", "", "id of the chart to show first (see -list); the newest when empty")
-	cpu := flag.Bool("cpu", false, "start on the CPU rasterizer rather than the GPU tier")
 	list := flag.Bool("list", false, "list the charts and exit")
 	flag.Parse()
 
@@ -67,14 +60,6 @@ func main() {
 			fmt.Printf("%-20s %s › %s\n", e.id, e.group, e.title)
 		}
 		return
-	}
-
-	// The tier is given back on the way out, which is gg's advice for the
-	// device it holds. The panel's switch uses Disable and Enable instead,
-	// which keep it.
-	defer gpuTier.Close()
-	if *cpu {
-		gpuTier.Disable()
 	}
 
 	a := app.New()

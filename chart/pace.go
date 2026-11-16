@@ -10,10 +10,14 @@ import (
 //
 // Fyne's desktop driver drains the whole operating-system event queue in one
 // pass, so a pointer moving at a hundred events a second delivers a hundred of
-// them — and each one that pans or zooms costs a frame, which on a chart of any
-// size is tens of milliseconds. Drawing every one of them means asking for four
-// times the work there is time for, and the backlog does not drain: the chart
-// falls further behind the cursor for as long as the drag lasts.
+// them — and each one that pans or zooms costs a frame. On figure's stilus
+// rasterizer a frame is well under a millisecond on a typical chart, but a
+// large one with a lot of data still costs more than the gap between two
+// events, and drawing every one of them then means asking for more work than
+// there is time for: the backlog does not drain, and the chart falls further
+// behind the cursor for as long as the drag lasts. A hundred drag events cost
+// 12.5 ms drawn one by one and 0.35 ms paced, on a 900x480 chart on an Apple
+// M4.
 //
 // So a frame that would arrive before the last one has been paid for is not
 // drawn. It is remembered instead, and the newest one wins — the reader is

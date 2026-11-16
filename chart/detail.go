@@ -12,17 +12,17 @@ import "time"
 // whatever size it is given and uploads that as the texture — the quad is drawn
 // at the widget's size either way, so a smaller frame is scaled by the graphics
 // card, for free, rather than resampled on the processor. Measured on a 900x480
-// chart, per frame:
+// chart on an Apple M4, per frame, with figure's stilus rasterizer:
 //
-//	                   full   0.5
-//	panning 4000 pts   45 ms  21 ms
-//	a sliding stream   25 ms   8 ms
+//	                   full     0.5
+//	panning 4000 pts   0.81 ms  0.52 ms
+//	a sliding stream   0.23 ms  0.17 ms
 //
-// Half the linear scale is a quarter of the pixels and rather less than a
-// quarter of the time, because some of a frame is spent per mark rather than
-// per pixel. It is still the difference between twenty frames a second and
-// fifty, which is the difference between a chart that drags and one that
-// follows the pointer.
+// Half the linear scale is a quarter of the pixels and far less than a
+// quarter saved, because on stilus most of a frame is spent per mark rather
+// than per pixel. Under gg, figure's earlier rasterizer, the same trade took a
+// pan from 45 ms to 21 ms; on stilus it buys a fraction of a millisecond, so
+// it is worth having only on a very large chart or a slow machine.
 
 // howSharpToSharpen is how long after the last wheel notch the chart is drawn
 // properly again. A drag says when it ends; a wheel does not, so it is timed.

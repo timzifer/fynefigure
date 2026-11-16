@@ -28,11 +28,9 @@ git clone https://github.com/timzifer/fynefigure
 cd fynefigure/cmd/demo && go run .
 ```
 
-The demo is a module of its own — it opts into the GPU tier, which is nested
-and so outside the widget's module graph — so it is run from its directory
-rather than fetched with `go run ...@latest`. On Linux it draws through the CPU
-rasterizer: the tier and Fyne's cgo driver cannot share a binary there, which
-`cmd/demo/gpu.go` explains.
+The demo is a module of its own, so that what it pulls in stays out of the
+widget's module graph; it is run from its directory rather than fetched with
+`go run ...@latest`.
 
 ## What is in here
 
@@ -58,12 +56,14 @@ Writing a second rasterizer instead is what figure's
 [ADR 0021](https://github.com/timzifer/figure/blob/main/docs/adr/0021-native-window.md)
 rejects: the day it disagrees with the first is the day a chart looks different
 on screen than in the file it exports. So this does what figure's native
-window does. It rasterizes with `backend/gg` — figure's one rasterizer — and
-presents the pixels.
+window does. It rasterizes with `backend/stilus` — figure's one rasterizer,
+since figure's
+[ADR 0094](https://github.com/timzifer/figure/blob/main/docs/adr/0094-the-raster-backend-is-stilus.md)
+replaced gg with it — and presents the pixels.
 
 Two things follow, and both are tested:
 
-- **A chart on screen is the PNG beside it.** `p.Render(gg.PNG("chart.png"))`
+- **A chart on screen is the PNG beside it.** `p.Render(stilus.PNG("chart.png"))`
   and the widget produce identical pixels, because they are the same code.
 - **Text is measured with the face it is drawn with**, so labels are placed
   exactly rather than approximated.
@@ -339,14 +339,14 @@ caller's.
 
 Fyne's desktop driver drains the whole operating-system event queue in one
 pass, so a pointer moving at a hundred events a second delivers a hundred of
-them — and each one that pans or zooms costs a frame. At tens of milliseconds a
-frame that is four times the work there is time for, and the backlog does not
+them — and each one that pans or zooms costs a frame. On a large chart with a
+lot of data that is more work than there is time for, and the backlog does not
 drain: the chart falls further behind the cursor for as long as the drag lasts.
 
 So a frame that would start before the last one has been paid for is not drawn.
 The newest position replaces it, and a trailing timer draws whatever is left
 over, so a drag that stops still lands where it stopped. A hundred drag events
-cost 60 ms of work instead of 2.6 seconds.
+cost 0.35 ms of work instead of 12.5 ms on a 900x480 chart.
 
 Nothing is lost by dropping a pan — figure pans by the distance from the last
 position it was told about, so the next one covers the whole way — and nothing
@@ -368,64 +368,40 @@ draws the quad at the widget's size either way — so a frame drawn at half the
 resolution is scaled up by the GPU rather than resampled on the processor.
 
 So a chart can be drawn coarse while a reader is dragging or zooming it and
-properly once they stop. Per drag frame on a 900x500 chart, 23 ms becomes
-7.4 ms at `chart.Detail(0.5)`.
+properly once they stop. Per drag frame on a 900x500 chart, 0.18 ms becomes
+0.11 ms at `chart.Detail(0.5)` — most of a stilus frame is spent per mark
+rather than per pixel, so the saving is modest.
 
 It is **off by default**, because it is visible: a chart in motion is soft
 until it is let go, and that is a trade a reader should be offered rather than
-given. Reach for it when a chart is large, the data heavy or the machine slow —
-and note that the GPU tier below makes the same frame cost 5 ms without
-softening anything, so try that first. A chart nobody is touching is always
-drawn at full resolution.
+given. Reach for it when a chart is very large or the machine slow. A chart
+nobody is touching is always drawn at full resolution.
 
 ## What a frame costs
 
-Rasterizing is the whole of it, and it is not cheap. On a 900x480 chart, per
-frame, on a Ryzen 7 5800H:
+Rasterizing used to be the whole of it; with stilus it is a fraction of a
+millisecond. On a 900x480 chart, per frame, on an Apple M4:
 
 | | |
 |---|---|
-| empty chart, axes and titles only | 20 ms |
-| a 600-point line, whole frame | 25 ms |
-| panning a 4000-point line | 45 ms |
-| the same at half resolution, with chart.Detail(0.5) | 21 ms |
-| a sliding stream at half resolution | 8 ms |
-| a hover that finds a mark, no repaint | 3 µs |
+| a sliding 600-point stream, whole frame | 0.23 ms |
+| a stream growing at its right-hand tip | 0.41 ms |
+| panning a 4000-point line | 0.81 ms |
+| the same at half resolution, with chart.Detail(0.5) | 0.52 ms |
+| a sliding stream at half resolution | 0.17 ms |
 
-So an interactive chart runs at twenty to thirty frames a second, and a hover
-costs nothing because it paints nothing. That is the rasterizer's price, and it
-is why the pacing above exists rather than being a nicety.
-
-There is a GPU tier, in `fynefigure/gpu`, and it is worth having:
-
-| | CPU | GPU |
-|---|---|---|
-| a sliding stream, whole frame | 25 ms | 7 ms |
-| panning a 4000-point line | 45 ms | 5 ms |
-
-One blank import turns it on:
-
-```go
-import _ "github.com/timzifer/fynefigure/gpu"
-```
-
-A machine with no usable device falls back to the CPU rasterizer, and
-`gpu.Enabled` reports which way it went — figure's tier proves the accelerator
-puts ink in a buffer before keeping it, so that is an answer about drawing
-rather than about registration.
-
-The two tiers do not share a coverage filler, so they do not agree pixel for
-pixel: the difference is the antialiasing on the edge of everything drawn,
-about one part in 255 on average. The package's parity test measures it.
+Under gg, figure's earlier rasterizer, the same pan cost 23 ms and the stream
+7.7 ms, which is why there used to be a GPU tier in `fynefigure/gpu`. It
+switched on gg's accelerator, which has nothing to accelerate now that gg is
+gone, and stilus on the CPU is faster than it was — so it has been removed.
 
 Figure offers to tell a backend *where* a frame changed so that only that part
-is repainted. It is off here, because measured it is six times slower: the
-rasterizer clears the damaged box and clips every drawing call to it, and its
-clip is a mask rasterized across the surface and then sampled per pixel — on
-top of the clip a panel already puts there. A stream sliding left costs 29 ms a
-frame whole and 180 ms partial. `fynefigure.DamageBudget` turns it back on for
-a chart whose changes really are confined to a corner; `go test -bench=Frame`
-is the measurement.
+is repainted. It is off here. Under gg it was six times slower, because gg's
+clip was a mask sampled per pixel; stilus clips a rectangle for nothing, so the
+penalty is gone, but a whole frame is already cheap and a partial one saves a
+fifth at best. `fynefigure.DamageBudget` turns it back on for a chart whose
+changes really are confined to a corner; `go test -bench=Frame` is the
+measurement.
 
 ### Colours and type
 
@@ -436,9 +412,8 @@ asks for. `chart.FollowTheme(false)` turns that off.
 The labels are drawn in figure's own fonts rather than the application's, and
 that is deliberate. Fyne renders text through a shaper that falls back: a
 character its theme font has no glyph for is drawn from another font, so the
-label appears. The rasterizer that draws a chart is handed one font and has no
-fallback, so the same character is drawn as nothing at all — silently, leaving a
-gap. Fyne's theme font is NotoSans-Regular, which has no glyph for `≤`, `≥` or
+label appears. The rasterizer that draws a chart is handed one font and no
+fallback, so the same character is drawn as `?`. Fyne's theme font is NotoSans-Regular, which has no glyph for `≤`, `≥` or
 `∞`, so a chart titled `30° ≤ x` would keep the degree sign and lose the rest.
 `chart.ThemeFont(true)` matches the application's typeface for a chart whose
 labels are plain enough to carry it; the default also keeps the widget
@@ -466,9 +441,12 @@ the defaults, and what to know before changing them.
 
 ## Versions
 
-`fyne.io/fyne/v2` v2.7.3, `github.com/timzifer/figure` v0.9.0 and its raster
-backend at `backend/gg/v0.9.0`, pinned exactly — a release of this bridge is
-validated against one release of each and says which.
+`fyne.io/fyne/v2` v2.7.3, `github.com/timzifer/figure` v0.15.2 and its raster
+backend at `backend/stilus/v0.15.2`, pinned exactly — a release of this bridge
+is validated against one release of each and says which.
+
+`backend/stilus` requires Go 1.27.1, because the font library it draws text
+with does, and so does this module.
 
 figure and its rasterizer are cgo-free; Fyne's desktop driver is not, so a
 program using this needs cgo the way any Fyne program does. Only the packages

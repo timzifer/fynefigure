@@ -58,6 +58,11 @@ func showcase() []*entry {
 			build: liveShow,
 		},
 		{
+			id: "market-live", group: plots.GroupMarket, title: "Live candles",
+			note:  "A tick feed folded into one-minute candles as it arrives; the open candle grows in place until its minute closes. The price axis fits what is in view. Hover for a crosshair snapped to a candle, its time and price tagged on the axes.",
+			build: marketLiveShow,
+		},
+		{
 			id: "transition", group: groupInteraction, title: "Transition",
 			note:  "Keyed rows moving between states: a bar that stays moves, a new one grows out of the baseline, a leaving one sinks back into it, and the labels count.",
 			build: transitionShow,
